@@ -23,7 +23,7 @@ export default function Dashboard() {
   if (loading) return <div className="p-8 text-center text-slate-500">Raporlar yükleniyor...</div>;
 
   if (records.length === 0) return (
-    <div className="p-12 text-center text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200">
+    <div className="p-12 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
       Henüz veri yüklenmemiş. Raporları görmek için lütfen önce "Veri Yükle" sayfasından CSV dosyanızı içeri aktarın.
     </div>
   );
@@ -53,20 +53,20 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800">Üretim Performans Özeti</h1>
+      <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Üretim Performans Özeti</h1>
       
       {/* KPI Kartları */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center"><div className="p-4 bg-blue-50 text-blue-600 rounded-lg mr-4"><Activity size={24}/></div><div><p className="text-sm text-slate-500 font-medium">Ortalama OEE</p><h3 className="text-2xl font-bold text-slate-800">%{avgOee}</h3></div></div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center"><div className="p-4 bg-green-50 text-green-600 rounded-lg mr-4"><Package size={24}/></div><div><p className="text-sm text-slate-500 font-medium">Toplam Üretim</p><h3 className="text-2xl font-bold text-slate-800">{totalProd.toLocaleString()}</h3></div></div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center"><div className="p-4 bg-red-50 text-red-600 rounded-lg mr-4"><Trash2 size={24}/></div><div><p className="text-sm text-slate-500 font-medium">Toplam Fire</p><h3 className="text-2xl font-bold text-slate-800">{totalScrap.toLocaleString()}</h3></div></div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center"><div className="p-4 bg-orange-50 text-orange-600 rounded-lg mr-4"><Clock size={24}/></div><div><p className="text-sm text-slate-500 font-medium">Toplam Duruş</p><h3 className="text-2xl font-bold text-slate-800">{totalDownTime.toLocaleString()} dk</h3></div></div>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center"><div className="p-4 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg mr-4"><Activity size={24}/></div><div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Ortalama OEE</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white">%{avgOee}</h3></div></div>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center"><div className="p-4 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg mr-4"><Package size={24}/></div><div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Toplam Üretim</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white">{totalProd.toLocaleString()}</h3></div></div>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center"><div className="p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg mr-4"><Trash2 size={24}/></div><div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Toplam Fire</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white">{totalScrap.toLocaleString()}</h3></div></div>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center"><div className="p-4 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-lg mr-4"><Clock size={24}/></div><div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Toplam Duruş</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white">{totalDownTime.toLocaleString()} dk</h3></div></div>
       </div>
 
       {/* OEE Trend Grafiği (Tailwind ile Native Çizim) */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-6">
-        <h3 className="font-bold text-slate-800 mb-6">Günlük Ortalama OEE Trendi (Son 14 Gün)</h3>
-        <div className="flex items-end space-x-4 h-64 border-b border-slate-100 pb-2">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm mt-6">
+        <h3 className="font-bold text-slate-800 dark:text-white mb-6">Günlük Ortalama OEE Trendi (Son 14 Gün)</h3>
+        <div className="flex items-end space-x-4 h-64 border-b border-slate-100 dark:border-slate-700 pb-2">
           {chartData.map(d => (
             <div key={d.date} className="flex flex-col items-center flex-1 group h-full justify-end">
               <span className="text-xs font-bold text-blue-600 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">%{d.avgOee}</span>

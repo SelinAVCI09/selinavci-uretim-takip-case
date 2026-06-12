@@ -115,25 +115,25 @@ export default function Import() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold text-slate-800">Üretim Raporu Yükle</h1>
-        <p className="text-slate-500 mt-2">MES sisteminden aldığınız günlük .csv raporunu buraya yükleyin.</p>
+        <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Üretim Raporu Yükle</h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-2">MES sisteminden aldığınız günlük .csv raporunu buraya yükleyin.</p>
       </div>
 
       {/* Veritabanı Durum Bilgisi */}
       {dbStats.total > 0 && !result && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between">
+        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center mb-4 md:mb-0">
             <Database className="text-blue-500 mr-4" size={32} />
             <div>
-              <h3 className="font-bold text-blue-800">Sistemde Yüklü Veri Bulunuyor</h3>
-              <p className="text-sm text-blue-600 mt-1">
+              <h3 className="font-bold text-blue-800 dark:text-blue-300">Sistemde Yüklü Veri Bulunuyor</h3>
+              <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
                 Şu anda veritabanında <strong>{dbStats.total}</strong> kayıt var ({dbStats.valid} geçerli, {dbStats.suspicious} şüpheli).
               </p>
             </div>
           </div>
           <button 
             onClick={handleClearDatabase}
-            className="flex items-center px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium text-sm shadow-sm"
+            className="flex items-center px-4 py-2 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/50 transition-colors font-medium text-sm shadow-sm"
           >
             <Trash2 size={16} className="mr-2" /> Veritabanını Temizle
           </button>
@@ -141,15 +141,15 @@ export default function Import() {
       )}
 
       {/* Dosya Yükleme Kartı */}
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 transition-all duration-300">
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-all duration-300">
         {!file && !fileName ? (
           <div 
-            className="border-2 border-dashed border-slate-300 rounded-xl p-12 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-12 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
           >
             <UploadCloud size={56} className="text-blue-500 mb-4" />
-            <h3 className="text-xl font-semibold text-slate-700">CSV Dosyasını Seçin veya Sürükleyin</h3>
-            <p className="text-sm text-slate-500 mt-2">Sadece .csv uzantılı dosyalar desteklenmektedir.</p>
+            <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-200">CSV Dosyasını Seçin veya Sürükleyin</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Sadece .csv uzantılı dosyalar desteklenmektedir.</p>
             <input 
               type="file" 
               accept=".csv" 
@@ -162,16 +162,16 @@ export default function Import() {
           <div className="space-y-6">
             {/* Yükleme Öncesi Tablo Önizlemesi */}
             {filePreview.length > 1 && !result && (
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-100 px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Dosya Önizlemesi (İlk 5 Satır)</div>
+              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                <div className="bg-slate-100 dark:bg-slate-900/80 px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Dosya Önizlemesi (İlk 5 Satır)</div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
                       <tr>{filePreview[0].map((h, i) => <th key={i} className="px-4 py-2 truncate max-w-[100px]">{h}</th>)}</tr>
                     </thead>
                     <tbody>
                       {filePreview.slice(1).map((row, i) => (
-                        <tr key={i} className="border-b border-slate-100">{row.map((cell, j) => <td key={j} className="px-4 py-2 truncate max-w-[100px] text-slate-600">{cell}</td>)}</tr>
+                        <tr key={i} className="border-b border-slate-100 dark:border-slate-700/50">{row.map((cell, j) => <td key={j} className="px-4 py-2 truncate max-w-[100px] text-slate-600 dark:text-slate-300">{cell}</td>)}</tr>
                       ))}
                     </tbody>
                   </table>
@@ -180,14 +180,14 @@ export default function Import() {
             )}
 
             <div className="flex flex-col space-y-4">
-              <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg">
                 <div className="flex items-center">
                   <FileText className="text-slate-500 mr-3" size={28} />
-                  <span className="font-medium text-slate-800">{fileName}</span>
-                  {file && <span className="text-sm text-slate-500 ml-3">({(file.size / 1024).toFixed(2)} KB)</span>}
+                  <span className="font-medium text-slate-800 dark:text-slate-200">{fileName}</span>
+                  {file && <span className="text-sm text-slate-500 dark:text-slate-400 ml-3">({(file.size / 1024).toFixed(2)} KB)</span>}
                 </div>
                 <div className="flex items-center space-x-3">
-                  <button onClick={handleRemoveFile} className="p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-colors" title="Dosyayı Sil">
+                  <button onClick={handleRemoveFile} className="p-2 text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/50 hover:text-red-500 rounded-full transition-colors" title="Dosyayı Sil">
                     <X size={20} />
                   </button>
                   {!result && file && (
@@ -213,30 +213,30 @@ export default function Import() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
+        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50 rounded-lg flex items-center text-red-700 dark:text-red-400">
           <AlertCircle className="mr-3" /> {error}
         </div>
       )}
 
       {result && result.summary && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-          <h3 className="text-lg font-bold text-green-800 flex items-center mb-6">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-xl p-6">
+          <h3 className="text-lg font-bold text-green-800 dark:text-green-400 flex items-center mb-6">
             <CheckCircle className="mr-2" /> CSV Rapor Yüklemesi Tamamlandı
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-white p-5 rounded-lg shadow-sm border border-green-100"><div className="text-sm text-slate-500 mb-1">Toplam Satır</div><div className="text-2xl font-bold text-slate-800">{result.summary.total_rows}</div></div>
-            <div className="bg-white p-5 rounded-lg shadow-sm border border-green-100"><div className="text-sm text-slate-500 mb-1">Geçerli Kayıt</div><div className="text-2xl font-bold text-green-600">{result.summary.valid}</div></div>
-            <div className="bg-white p-5 rounded-lg shadow-sm border border-green-100"><div className="text-sm text-slate-500 mb-1">Şüpheli Kayıt</div><div className="text-2xl font-bold text-orange-500">{result.summary.suspicious}</div></div>
-            <div className="bg-white p-5 rounded-lg shadow-sm border border-green-100"><div className="text-sm text-slate-500 mb-1">Çift/Tekrar Eden</div><div className="text-2xl font-bold text-slate-600">{result.summary.duplicates}</div></div>
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-lg shadow-sm border border-green-100 dark:border-green-800/30"><div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Toplam Satır</div><div className="text-2xl font-bold text-slate-800 dark:text-slate-200">{result.summary.total_rows}</div></div>
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-lg shadow-sm border border-green-100 dark:border-green-800/30"><div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Geçerli Kayıt</div><div className="text-2xl font-bold text-green-600 dark:text-green-400">{result.summary.valid}</div></div>
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-lg shadow-sm border border-green-100 dark:border-green-800/30"><div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Şüpheli Kayıt</div><div className="text-2xl font-bold text-orange-500 dark:text-orange-400">{result.summary.suspicious}</div></div>
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-lg shadow-sm border border-green-100 dark:border-green-800/30"><div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Çift/Tekrar Eden</div><div className="text-2xl font-bold text-slate-600 dark:text-slate-400">{result.summary.duplicates}</div></div>
           </div>
 
           {result.summary.error_breakdown && Object.keys(result.summary.error_breakdown).length > 0 && (
-            <div className="mt-6 bg-orange-50 p-5 rounded-lg border border-orange-200">
-              <h4 className="font-semibold text-orange-800 mb-3 flex items-center">
+            <div className="mt-6 bg-orange-50 dark:bg-orange-900/30 p-5 rounded-lg border border-orange-200 dark:border-orange-800/50">
+              <h4 className="font-semibold text-orange-800 dark:text-orange-400 mb-3 flex items-center">
                 <AlertCircle size={18} className="mr-2" />
                 Tespit Edilen Kalite Sorunlarının Dökümü
               </h4>
-              <ul className="list-disc pl-5 text-sm text-orange-700 space-y-1">
+              <ul className="list-disc pl-5 text-sm text-orange-700 dark:text-orange-300 space-y-1">
                 {Object.entries(result.summary.error_breakdown).map(([err, count]) => (
                   <li key={err}><strong>{count} adet</strong> kayıt: {err}</li>
                 ))}
