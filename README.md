@@ -100,8 +100,8 @@ Bu bölüm %100 temizlenmiş verilerin hedef REST API'ye (Magna) aktarılmasın�
 
 ---
 
-## 🕵️ Tespit Edilen 14 Farklı Hata Tipi ve Validasyon Kuralları
-Sistem, her bir üretim kaydı için **14 farklı kalite ve anomali kuralı** işletir. Ayarlar menüsünden açılıp kapatılabilen bu kurallar, hataların ciddiyetine göre **"Kesin Hatalı"** veya **"Uyarı"** olarak sınıflandırılır.
+## 🕵️ Tespit Edilen 17 Farklı Hata Tipi ve Validasyon Kuralları
+Sistem, her bir üretim kaydı için **17 farklı kalite ve anomali kuralı** işletir. Ayarlar menüsünden açılıp kapatılabilen bu kurallar, hataların ciddiyetine göre **"Kesin Hatalı"** veya **"Uyarı"** olarak sınıflandırılır.
 
 | # | Kontrol Edilen Kural | Hata Örneği / Senaryo | Sınıflandırma | Aksiyon |
 | :--- | :--- | :--- | :--- | :--- |
@@ -109,16 +109,19 @@ Sistem, her bir üretim kaydı için **14 farklı kalite ve anomali kuralı** i�
 | 2 | **İş Emri Formatı** | İş Emri 302 ile başlamalı ve 10 hane olmalıdır. | ❌ Kesin Hatalı | Düzelt |
 | 3 | **Vardiya Kontrolü** | Geçersiz Vardiya: 4 (Sadece 1,2,3 olabilir) | ❌ Kesin Hatalı | Düzelt |
 | 4 | **Eksik İş İstasyonu** | İş İstasyonu bilgisi boş bırakılamaz. | ❌ Kesin Hatalı | Reddet |
-| 5 | **Geçersiz Miktar** | Hedef sistem 0 veya negatif üretimi/fireyi kabul etmez. | ❌ Kesin Hatalı | Düzelt |
-| 6 | **Fire Tutarlılığı**| Fire miktarı (60), Toplam üretimden (50) büyük olamaz. | ❌ Kesin Hatalı | Düzelt |
-| 7 | **Yüzdelik Aralık** | A, P, Q veya OEE değeri %100'den büyük veya negatif. | ❌ Kesin Hatalı | Düzelt |
-| 8 | **Kapasite Aşımı** | Performans (P) %105 - Makine teorik hızını aştı. | ⚠️ Uyarı | Uyar |
-| 9 | **Duruş Tutarsızlığı** | Planlı(10) + Plansız(5) != Toplam Duruş(30) | ❌ Kesin Hatalı | Düzelt |
-| 10 | **Duruş > Çalışma** | Toplam Duruş süresi, Çalışma Süresinden büyük. | ❌ Kesin Hatalı | Düzelt |
-| 11 | **Süresiz Üretim** | Çalışma süresi 0 iken 500 adet parça üretilmiş. | ❌ Kesin Hatalı | Düzelt |
-| 12 | **Kullanılabilirlik Hatası**| Makine duruş yapmasına rağmen Kullanılabilirlik (A) %100. | ❌ Kesin Hatalı | Düzelt |
-| 13 | **Geçersiz/Gelecek Tarih** | Tarih bilgisi boş veya gelecek bir güne ait olamaz. | ❌ Kesin Hatalı | Reddet / Düzelt |
-| 14 | **OEE Çapraz Kontrol** | OEE değeri A*P*Q çarpımına eşit değil. | ❌ Kesin Hatalı | Düzelt |
+| 5 | **Eksik Ürün (Stok Adı)** | Stok Adı alanı boş bırakılamaz. | ❌ Kesin Hatalı | Reddet |
+| 6 | **Eksik Metrik Verisi** | A, P, Q, Süre veya Üretim verisi boş. | ❌ Kesin Hatalı | Reddet |
+| 7 | **Geçersiz Miktar** | Hedef sistem 0 veya negatif üretimi/fireyi kabul etmez. | ❌ Kesin Hatalı | Düzelt |
+| 8 | **Fire Tutarlılığı**| Fire miktarı (60), Toplam üretimden (50) büyük olamaz. | ❌ Kesin Hatalı | Düzelt |
+| 9 | **Yüzdelik Aralık** | A, P, Q veya OEE değeri %100'den büyük veya negatif. | ❌ Kesin Hatalı | Düzelt |
+| 10 | **Kapasite Aşımı** | Performans (P) %105 - Makine teorik hızını aştı. | ⚠️ Uyarı | Uyar |
+| 11 | **Duruş Tutarsızlığı** | Planlı(10) + Plansız(5) != Toplam Duruş(30) | ❌ Kesin Hatalı | Düzelt |
+| 12 | **Duruş > Çalışma** | Toplam Duruş süresi, Çalışma Süresinden büyük. | ❌ Kesin Hatalı | Düzelt |
+| 13 | **Süresiz Üretim** | Çalışma süresi 0 iken 500 adet parça üretilmiş. | ❌ Kesin Hatalı | Düzelt |
+| 14 | **Uzun Çalışma & 0 Üretim** | Çalışma > 60dk iken üretim 0 ise uyar. | ⚠️ Uyarı | Uyar |
+| 15 | **Kullanılabilirlik Hatası**| Makine duruş yapmasına rağmen Kullanılabilirlik (A) %100. | ❌ Kesin Hatalı | Düzelt |
+| 16 | **Geçersiz/Gelecek Tarih** | Tarih bilgisi boş veya gelecek bir güne ait olamaz. | ❌ Kesin Hatalı | Reddet / Düzelt |
+| 17 | **OEE Çapraz Kontrol** | OEE değeri A*P*Q çarpımına eşit değil. | ❌ Kesin Hatalı | Düzelt |
 
 ---
 
