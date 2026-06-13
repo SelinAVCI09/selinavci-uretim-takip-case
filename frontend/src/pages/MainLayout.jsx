@@ -32,9 +32,14 @@ export default function MainLayout() {
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
       {/* Sol Menü (Sidebar) */}
       <aside className={`bg-slate-900 dark:bg-slate-950 text-white flex flex-col shadow-xl z-10 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-        <div className="h-16 flex items-center justify-center px-4 font-bold text-xl border-b border-slate-800">
-          <span className="text-blue-500 font-extrabold">{isSidebarOpen ? 'MAGNA' : 'M'}</span>
-          {isSidebarOpen && <span className="ml-2">Takip</span>}
+        <div className="h-16 flex items-center pl-5 pr-4 border-b border-slate-800 overflow-hidden">
+          <div className="flex items-center justify-center w-10 flex-shrink-0 font-extrabold text-xl text-blue-500">
+            M
+          </div>
+          <div className={`flex items-center overflow-hidden transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'w-40 opacity-100' : 'w-0 opacity-0'}`}>
+            <span className="text-blue-500 font-extrabold text-xl">AGNA</span>
+            <span className="font-bold text-xl ml-2">Takip</span>
+          </div>
         </div>
         <nav className="flex-1 py-6 overflow-hidden">
           <ul className="space-y-1">
@@ -43,14 +48,18 @@ export default function MainLayout() {
                 <NavLink
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center px-6 py-3 text-sm transition-colors ${
-                      isActive ? 'bg-blue-600 text-white border-r-4 border-blue-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                    `flex items-center py-3 pl-5 pr-4 border-r-4 transition-all duration-300 ${
+                      isActive ? 'bg-blue-600 text-white border-blue-400' : 'text-slate-400 border-transparent hover:bg-slate-800 hover:text-white'
                     }`
                   }
                   title={!isSidebarOpen ? item.label : ""}
                 >
-                  <span className={isSidebarOpen ? "mr-3" : "mx-auto"}>{item.icon}</span>
-                  {isSidebarOpen && <span className="whitespace-nowrap">{item.label}</span>}
+                  <div className="flex items-center justify-center w-10 flex-shrink-0">
+                    {item.icon}
+                  </div>
+                  <div className={`overflow-hidden transition-all duration-300 whitespace-nowrap text-sm ${isSidebarOpen ? 'w-44 opacity-100' : 'w-0 opacity-0'}`}>
+                    <span className="ml-3">{item.label}</span>
+                  </div>
                 </NavLink>
               </li>
             ))}
@@ -58,22 +67,30 @@ export default function MainLayout() {
         </nav>
 
         {/* Tema ve Kapatma Butonları */}
-        <div className="border-t border-slate-800 p-4 space-y-2">
+        <div className="border-t border-slate-800 py-4 flex flex-col gap-2 overflow-hidden">
           <button 
             onClick={toggleDarkMode}
-            className={`w-full flex items-center p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors ${isSidebarOpen ? 'justify-start px-4' : 'justify-center'}`}
+            className="w-full flex items-center py-2 pl-5 pr-4 border-r-4 border-transparent text-slate-400 hover:text-white hover:bg-slate-800 transition-colors duration-300"
             title={isDarkMode ? "Açık Tema" : "Koyu Tema"}
           >
-            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            {isSidebarOpen && <span className="ml-3 text-sm whitespace-nowrap">Tema Değiştir</span>}
+            <div className="flex items-center justify-center w-10 flex-shrink-0">
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </div>
+            <div className={`overflow-hidden transition-all duration-300 whitespace-nowrap text-sm text-left ${isSidebarOpen ? 'w-44 opacity-100' : 'w-0 opacity-0'}`}>
+              <span className="ml-3">Tema Değiştir</span>
+            </div>
           </button>
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`w-full flex items-center p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors ${isSidebarOpen ? 'justify-start px-4' : 'justify-center'}`}
+            className="w-full flex items-center py-2 pl-5 pr-4 border-r-4 border-transparent text-slate-400 hover:text-white hover:bg-slate-800 transition-colors duration-300"
             title={isSidebarOpen ? "Menüyü Daralt" : "Menüyü Genişlet"}
           >
-            {isSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-            {isSidebarOpen && <span className="ml-3 text-sm whitespace-nowrap">Menüyü Daralt</span>}
+            <div className="flex items-center justify-center w-10 flex-shrink-0">
+              {isSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+            </div>
+            <div className={`overflow-hidden transition-all duration-300 whitespace-nowrap text-sm text-left ${isSidebarOpen ? 'w-44 opacity-100' : 'w-0 opacity-0'}`}>
+              <span className="ml-3">Menüyü Daralt</span>
+            </div>
           </button>
         </div>
       </aside>
