@@ -25,3 +25,8 @@ node_modules/
 .vscode/
 .idea/
 *.swp
+
+# Veritabanı (Database)
+*.db
+*.sqlite
+*.sqlite3

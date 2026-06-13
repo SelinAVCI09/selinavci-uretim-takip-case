@@ -39,6 +39,19 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Magna Üretim Takip API")
 
+@app.on_event("startup")
+def clear_old_csv_records():
+    """
+    Backend baştan başlatıldığında önceki oturumdan kalan CSV kayıtlarını temizler.
+    Ancak dış sisteme atılan API loglarını (SyncLog) geçmişi görmek adına kalıcı tutar.
+    """
+    db = SessionLocal()
+    try:
+        db.query(models.ProductionRecord).delete()
+        db.commit()
+    finally:
+        db.close()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Geliştirme ortamı için tüm originlere izin veriyoruz
@@ -203,6 +216,26 @@ def validate_row(row):
 
     return errors
 
+# Exponential Backoff / Circuit Breaker Algoritması
+def send_to_api_with_backoff(payload, headers, max_retries=3):
+    delay = 2 # Başlangıç bekleme süresi (saniye)
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(EXTERNAL_API_URL, json=payload, headers=headers, timeout=15.0)
+            # Başarılı veya Validasyon (422) hatası ise doğrudan dön (tekrar denemeye gerek yok)
+            if resp.status_code in [200, 422]:
+                return resp
+            # 429 Rate Limit veya 5xx Server Error ise katlanarak bekle
+            time.sleep(delay)
+            delay *= 2  # Her hatada bekleme süresini ikiye katla (2s, 4s, 8s...)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                # Son deneme de başarısız olursa hatayı fırlat
+                raise e
+            time.sleep(delay)
+            delay *= 2
+    return resp
+
 @app.post("/api/v1/upload-csv")
 async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.endswith(".csv"):
@@ -231,9 +264,12 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
     stats = {"total_rows": 0, "imported": 0, "duplicates": 0, "valid": 0, "warning": 0, "error": 0, "error_breakdown": {}}
     records_to_insert = []
 
-    for idx, row in df.iterrows():
+    # Performans İyileştirmesi: 100K+ satırlık verilerde df.iterrows() çok yavaştır.
+    # to_dict('records') ile veriler bellekte çok daha hızlı işlenir.
+    dict_records = df.to_dict('records')
+    
+    for record_dict in dict_records:
         stats["total_rows"] += 1
-        record_dict = row.to_dict()
         
         if record_dict["record_id"] in existing_ids:
             stats["duplicates"] += 1
@@ -246,8 +282,8 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             err_msg = err["message"] if isinstance(err, dict) else str(err)
             stats["error_breakdown"][err_msg] = stats["error_breakdown"].get(err_msg, 0) + 1
             
-        if row.get("date"):
-            record_dict["date"] = pd.to_datetime(row["date"]).date()
+        if record_dict.get("date"):
+            record_dict["date"] = pd.to_datetime(record_dict["date"]).date()
             
         is_valid = len(errors) == 0
         record_dict["is_valid"] = is_valid
@@ -596,11 +632,7 @@ def manual_sync(payload: SyncPayload, db: Session = Depends(get_db)):
     headers = {"X-Production-Key": API_KEY, "Content-Type": "application/json"}
     data = payload.dict()
     try:
-        resp = requests.post(EXTERNAL_API_URL, json=data, headers=headers, timeout=15.0)
-        if resp.status_code == 429: # Rate Limit
-            time.sleep(60)
-            resp = requests.post(EXTERNAL_API_URL, json=data, headers=headers, timeout=15.0)
-            
+        resp = send_to_api_with_backoff(data, headers=headers)
         is_success = resp.status_code == 200
         log = SyncLog(
             production_date=data["production_date"],
@@ -655,16 +687,12 @@ def run_sync_task_batch(groups_to_sync: list):
             if not SYNC_STATE["is_syncing"]: break
             
             try:
-                resp = requests.post(EXTERNAL_API_URL, json=batch, headers=headers, timeout=20.0)
+                resp = send_to_api_with_backoff(batch, headers=headers)
                 
                 # EĞER HEDEF SİSTEM BATCH (DİZİ) KABUL ETMEYİP 422 DÖNERSE -> SINGLE OBJECT FALLBACK (Çok güçlü koruma)
                 if resp.status_code == 422:
                     for item in batch:
-                        resp_single = requests.post(EXTERNAL_API_URL, json=item, headers=headers, timeout=10.0)
-                        if resp_single.status_code == 429: # Rate Limit
-                            time.sleep(60)
-                            resp_single = requests.post(EXTERNAL_API_URL, json=item, headers=headers, timeout=10.0)
-                        
+                        resp_single = send_to_api_with_backoff(item, headers=headers)
                         is_success = resp_single.status_code == 200
                         log = SyncLog(production_date=item["production_date"], shift=item["shift"], payload=json.dumps(item), status_code=resp_single.status_code, response_data=resp_single.text, is_success=is_success)
                         db.add(log)
@@ -674,11 +702,6 @@ def run_sync_task_batch(groups_to_sync: list):
                         SYNC_STATE["processed"] += 1
                     continue # Bu batch bitti, diğerine geç
                 
-                # API Batch destekliyorsa Normal Akış:
-                if resp.status_code == 429:
-                    time.sleep(60)
-                    resp = requests.post(EXTERNAL_API_URL, json=batch, headers=headers, timeout=20.0)
-                    
                 is_success = resp.status_code == 200
                 for item in batch:
                     log = SyncLog(production_date=item["production_date"], shift=item["shift"], payload=json.dumps(item), status_code=resp.status_code, response_data=resp.text, is_success=is_success)

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle, Printer, Maximize2, X } from 'lucide-react';
+import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle, Printer, Maximize2, X, Search } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area
@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [trendView, setTrendView] = useState('daily');
   const [trendOffset, setTrendOffset] = useState(0);
   const [expandedChart, setExpandedChart] = useState(null);
+  const [anomalyFilter, setAnomalyFilter] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -227,6 +228,50 @@ export default function Dashboard() {
           </div>
         )
       )
+    },
+    anomalies: {
+      title: "Anomali & Doğrulama Hataları Detayı",
+      desc: "Sistemde tespit edilen tüm kalite kuralı ihlallerini, eksik ve şüpheli kayıtları listeler. Tablodaki hataları metin bazlı arayarak filtreleyebilirsiniz.",
+      render: () => {
+        const filteredAnomalies = (data.anomalies || []).filter(a => {
+          const text = typeof a.error === 'object' ? JSON.stringify(a.error) : String(a.error);
+          return text.toLowerCase().includes(anomalyFilter.toLowerCase());
+        });
+        return (
+          <div className="flex flex-col h-full">
+            <div className="mb-4 relative">
+              <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Hata mesajlarında ara..."
+                value={anomalyFilter}
+                onChange={(e) => setAnomalyFilter(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto pr-2">
+              {filteredAnomalies.length > 0 ? (
+                <ul className="space-y-3">
+                  {filteredAnomalies.map((a, i) => (
+                    <li key={i} className="flex justify-between items-start text-sm border-b border-red-100 dark:border-red-900/30 pb-3">
+                      <div className="pr-4 flex flex-col items-start gap-1.5">
+                        {a.count >= 10 ? 
+                          <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Sistemik Sorun</span> : 
+                          <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Tekil Hata</span>
+                        }
+                        <span className="text-slate-700 dark:text-slate-300">{typeof a.error === 'object' ? JSON.stringify(a.error) : String(a.error)}</span>
+                      </div>
+                      <span className="bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 py-1 px-3 rounded-full font-bold text-xs whitespace-nowrap">{a.count} Adet</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="h-full flex items-center justify-center text-slate-400 pb-10">Aranan kriterde hata bulunamadı.</div>
+              )}
+            </div>
+          </div>
+        );
+      }
     }
   };
 
@@ -406,8 +451,9 @@ export default function Dashboard() {
 
         {/* Veri Doğrulama ve Anomali Uyarı Tablosu */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-red-200 dark:border-red-900/50 shadow-sm flex flex-col">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-2 flex items-center text-red-600 dark:text-red-400">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-2 flex items-center text-red-600 dark:text-red-400 cursor-pointer hover:text-red-500 transition-colors group" onClick={() => { setAnomalyFilter(''); setExpandedChart('anomalies'); }} title="Büyüt ve Filtrele">
             <AlertTriangle className="mr-2" size={20} /> Anomali & Doğrulama Hataları
+            <Maximize2 size={16} className="ml-auto text-slate-400 group-hover:text-red-500" />
           </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Sistemde şüpheli değerler veya hatalar tespit edildi.</p>
           
@@ -422,16 +468,31 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-2">
+          <div className="flex-1 overflow-hidden relative">
             {data.anomalies.length > 0 ? (
-              <ul className="space-y-3">
-                {data.anomalies.map((a, i) => (
-                  <li key={i} className="flex justify-between items-start text-sm border-b border-red-100 dark:border-red-900/30 pb-2">
-                    <span className="text-slate-700 dark:text-slate-300 pr-4">{typeof a.error === 'object' ? JSON.stringify(a.error) : String(a.error)}</span>
-                    <span className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 py-0.5 px-2 rounded-full font-bold text-xs whitespace-nowrap">{a.count} Adet</span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-3">
+                  {data.anomalies.slice(0, 4).map((a, i) => (
+                    <li key={i} className="flex justify-between items-start text-sm border-b border-red-100 dark:border-red-900/30 pb-2">
+                      <div className="pr-4 flex flex-col items-start gap-1">
+                        {a.count >= 10 ? 
+                          <span className="text-red-600 dark:text-red-400 text-[10px] font-bold uppercase tracking-wider">Sistemik Sorun</span> : 
+                          <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Tekil Hata</span>
+                        }
+                        <span className="text-slate-700 dark:text-slate-300 line-clamp-2">{typeof a.error === 'object' ? JSON.stringify(a.error) : String(a.error)}</span>
+                      </div>
+                      <span className="bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 py-0.5 px-2 rounded-full font-bold text-xs whitespace-nowrap mt-1">{a.count} Adet</span>
+                    </li>
+                  ))}
+                </ul>
+                {data.anomalies.length > 4 && (
+                  <div className="mt-3 text-center">
+                    <button onClick={() => { setAnomalyFilter(''); setExpandedChart('anomalies'); }} className="text-xs font-bold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors">
+                      + {data.anomalies.length - 4} Hatayı Daha Gör
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="h-full flex items-center justify-center text-slate-400">Hata bulunamadı.</div>
             )}
