@@ -37,13 +37,13 @@ export default function Filter() {
     if (filters.endDate) data = data.filter(r => r.date <= filters.endDate);
     if (filters.shifts.length > 0) data = data.filter(r => filters.shifts.includes(r.shift));
     if (filters.workstations.length > 0) data = data.filter(r => filters.workstations.includes(r.workstation_name));
-    if (filters.stockName) data = data.filter(r => r.stock_name?.toLowerCase().includes(filters.stockName.toLowerCase()));
+    if (filters.stockName) data = data.filter(r => String(r.stock_name || '').toLowerCase().includes(filters.stockName.toLowerCase()));
     if (filters.minOee > 0) data = data.filter(r => (r.oee || 0) >= filters.minOee);
     if (filters.statusFilter === 'valid') data = data.filter(r => r.is_valid === true);
     if (filters.statusFilter === 'warning') data = data.filter(r => r.record_status === 'warning');
     if (filters.statusFilter === 'error') data = data.filter(r => r.record_status === 'error' || (!r.is_valid && !r.record_status)); // Geriye dönük uyumluluk
     if (filters.statusFilter !== 'all' && filters.errorType) {
-      data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e.error_type === filters.errorType));
+      data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.error_type === filters.errorType));
     }
     setFilteredRecords(data);
   };
@@ -66,7 +66,7 @@ export default function Filter() {
   };
 
   const uniqueWorkstations = [...new Set(records.map(r => r.workstation_name).filter(Boolean))];
-  const uniqueErrorTypes = [...new Set(records.filter(r => !r.is_valid).flatMap(r => parseErrors(r.validation_errors).map(err => err.error_type)).filter(Boolean))];
+  const uniqueErrorTypes = [...new Set(records.filter(r => !r.is_valid).flatMap(r => parseErrors(r.validation_errors).map(err => err?.error_type)).filter(Boolean))];
 
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return;
@@ -126,7 +126,10 @@ export default function Filter() {
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Hata Nedeni / Tipi</label>
                   <select value={filters.errorType} onChange={e => setFilters({...filters, errorType: e.target.value})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
                     <option value="">Tüm Hata Tipleri</option>
-                    {uniqueErrorTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                    {uniqueErrorTypes.map(type => {
+                      const safeType = typeof type === 'object' ? JSON.stringify(type) : String(type);
+                      return <option key={safeType} value={safeType}>{safeType}</option>
+                    })}
                   </select>
                 </div>
               )}
@@ -159,9 +162,16 @@ export default function Filter() {
                       <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-3 z-50">
                         <p className="text-xs font-bold text-slate-800 dark:text-white mb-2 border-b border-slate-100 dark:border-slate-700 pb-1">Hata Detayları:</p>
                         <ul className="text-[11px] space-y-2 text-slate-600 dark:text-slate-400 whitespace-normal">
-                          {parseErrors(r.validation_errors).map((err, i) => (
-                            <li key={i} className="flex flex-col"><span className="font-semibold text-red-500 block">• {err.error_type}</span><span>{err.message || err}</span>{err.reason && <span className="italic opacity-80 mt-0.5 text-slate-500 block">💡 {err.reason}</span>}</li>
-                          ))}
+                          {parseErrors(r.validation_errors).map((err, i) => {
+                            const msg = typeof err === 'object' && err !== null ? (err.message || JSON.stringify(err)) : err;
+                            return (
+                              <li key={i} className="flex flex-col">
+                                <span className="font-semibold text-red-500 block">• {String(err?.error_type || 'Bilinmeyen Hata')}</span>
+                                <span>{String(msg)}</span>
+                                {err?.reason && <span className="italic opacity-80 mt-0.5 text-slate-500 block">💡 {String(err.reason)}</span>}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     </div>

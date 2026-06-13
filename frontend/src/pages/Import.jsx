@@ -33,8 +33,13 @@ export default function Import() {
     const savedResult = localStorage.getItem('lastUploadResult');
     const savedFileName = localStorage.getItem('lastFileName');
     if (savedResult && savedFileName) {
-      setResult(JSON.parse(savedResult));
-      setFileName(savedFileName);
+      try {
+        setResult(JSON.parse(savedResult));
+        setFileName(savedFileName);
+      } catch (err) {
+        localStorage.removeItem('lastUploadResult');
+        localStorage.removeItem('lastFileName');
+      }
     }
   }, []);
 

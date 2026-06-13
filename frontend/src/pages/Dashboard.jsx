@@ -427,7 +427,7 @@ export default function Dashboard() {
               <ul className="space-y-3">
                 {data.anomalies.map((a, i) => (
                   <li key={i} className="flex justify-between items-start text-sm border-b border-red-100 dark:border-red-900/30 pb-2">
-                    <span className="text-slate-700 dark:text-slate-300 pr-4">{a.error}</span>
+                    <span className="text-slate-700 dark:text-slate-300 pr-4">{typeof a.error === 'object' ? JSON.stringify(a.error) : String(a.error)}</span>
                     <span className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 py-0.5 px-2 rounded-full font-bold text-xs whitespace-nowrap">{a.count} Adet</span>
                   </li>
                 ))}
