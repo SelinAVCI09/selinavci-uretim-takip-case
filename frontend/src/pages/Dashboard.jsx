@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap } from 'lucide-react';
+import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle } from 'lucide-react';
 import { 
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area
 } from 'recharts';
 
 export default function Dashboard() {
@@ -11,10 +11,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ startDate: '', endDate: '', workstation: '' });
   const [availableWorkstations, setAvailableWorkstations] = useState([]);
+  const [trendView, setTrendView] = useState('daily');
+  const [trendOffset, setTrendOffset] = useState(0);
 
   useEffect(() => {
     fetchDashboardData();
   }, [filters]);
+
+  useEffect(() => {
+    setTrendOffset(0);
+  }, [trendView, data]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -37,21 +43,55 @@ export default function Dashboard() {
   };
 
   if (loading && !data) return <div className="p-8 text-center text-slate-500">Raporlar yükleniyor...</div>;
-  if (!data || data.total_records === 0) return (
+  if (!data || data.global_total_records === 0) return (
     <div className="p-12 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
       Henüz veri yüklenmemiş. Raporları görmek için lütfen önce "Veri Yükle" sayfasından CSV dosyanızı içeri aktarın.
     </div>
   );
+
+  // Trend Grafiği Hesaplamaları (Günlük / Haftalık Gruplama & Sayfalama)
+  let processedTrend = data?.trend || [];
+  if (trendView === 'weekly') {
+    const weeklyGroups = {};
+    processedTrend.forEach(item => {
+      const d = new Date(item.date);
+      const day = d.getDay() || 7; // Pazartesi = 1, Pazar = 7
+      d.setDate(d.getDate() - day + 1); // İlgili haftanın Pazartesi gününü bul
+      const weekStr = d.toISOString().split('T')[0];
+      if (!weeklyGroups[weekStr]) weeklyGroups[weekStr] = { sum: 0, count: 0 };
+      weeklyGroups[weekStr].sum += item.avg_oee;
+      weeklyGroups[weekStr].count += 1;
+    });
+    processedTrend = Object.keys(weeklyGroups).sort().map(k => ({
+      date: k,
+      avg_oee: Number((weeklyGroups[k].sum / weeklyGroups[k].count).toFixed(2))
+    }));
+  }
+
+  const pageSize = trendView === 'daily' ? 14 : 12; // Günlük 14 gün, Haftalık 12 hafta gösterelim
+  const maxOffset = Math.max(0, Math.ceil(processedTrend.length / pageSize) - 1);
+  const startIndex = Math.max(0, processedTrend.length - (trendOffset + 1) * pageSize);
+  const endIndex = processedTrend.length - trendOffset * pageSize;
+  const displayTrend = processedTrend.slice(startIndex, endIndex);
+
+  const handlePrevTrend = () => {
+    if (trendOffset < maxOffset) setTrendOffset(prev => prev + 1);
+  };
+  const handleNextTrend = () => {
+    if (trendOffset > 0) setTrendOffset(prev => prev - 1);
+  };
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white dark:bg-slate-800 p-3 border border-slate-200 dark:border-slate-700 shadow-lg rounded-lg">
           <p className="font-bold text-slate-800 dark:text-white mb-1">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }} className="text-sm">
-              {entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}
-            </p>
+          {payload
+            .filter(entry => entry.dataKey !== 'start') // Şelale altındaki şeffaf kısmı gizle
+            .map((entry, index) => (
+              <p key={index} style={{ color: entry.fill || entry.color }} className="text-sm">
+                {entry.name}: {typeof entry.value === 'number' && entry.value % 1 !== 0 ? entry.value.toFixed(2) : entry.value}
+              </p>
           ))}
         </div>
       );
@@ -86,6 +126,14 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {data.total_records === 0 ? (
+        <div className="p-12 text-center bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 mt-6">
+          <Filter size={48} className="mx-auto mb-4 opacity-50" />
+          <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-2">İlgili tarihte/filtrede bilgi bulunmamaktadır</h3>
+          <p>Seçtiğiniz kriterlere uygun veri yok. Lütfen tarih aralığını veya filtreleri değiştirerek tekrar deneyin.</p>
+        </div>
+      ) : (
+        <>
       {/* CANLI/SON VARDİYA BİLGİSİ */}
       {data.last_shift && (
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-6 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -127,10 +175,32 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* OEE Trend Grafiği */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-6">OEE Trendi (Günlük)</h3>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-slate-800 dark:text-white">
+              OEE Trendi ({trendView === 'daily' ? 'Günlük' : 'Haftalık'})
+            </h3>
+            <div className="flex items-center gap-3">
+              <select 
+                value={trendView} 
+                onChange={e => setTrendView(e.target.value)}
+                className="text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-white rounded-md p-1.5 outline-none"
+              >
+                <option value="daily">Günlük</option>
+                <option value="weekly">Haftalık</option>
+              </select>
+              <div className="flex bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md overflow-hidden">
+                <button onClick={handlePrevTrend} disabled={trendOffset >= maxOffset} className="px-2.5 py-1 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
+                  &lt;
+                </button>
+                <button onClick={handleNextTrend} disabled={trendOffset === 0} className="px-2.5 py-1 text-slate-600 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
+                  &gt;
+                </button>
+              </div>
+            </div>
+          </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.trend}>
+              <AreaChart data={displayTrend}>
                 <defs>
                   <linearGradient id="colorOee" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -194,24 +264,33 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <h3 className="font-bold text-slate-800 dark:text-white mb-6">Duruş Nedenleri</h3>
           <div className="h-72 relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={data.downtime} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
-                  {data.downtime.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                </Pie>
-                <Tooltip />
-                <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4">
-              <span className="block text-xl font-bold dark:text-white text-slate-800">{data.kpis.total_downtime}</span>
-              <span className="block text-xs text-slate-500">dk</span>
-            </div>
+            {data.kpis.total_downtime > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={data.downtime} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
+                      {data.downtime.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4 pointer-events-none">
+                  <span className="block text-xl font-bold dark:text-white text-slate-800">{data.kpis.total_downtime}</span>
+                  <span className="block text-xs text-slate-500">dk</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                <CheckCircle size={40} className="text-green-500/50 mb-3" />
+                <p>Bu aralıkta duruş verisi bulunmamaktadır.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* İş İstasyonu OEE Sıralaması */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <h3 className="font-bold text-slate-800 dark:text-white mb-6">İş İstasyonu OEE Sıralaması</h3>
@@ -226,6 +305,49 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
+            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Genel Ortalama OEE</span>
+            <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">%{data.kpis.avg_oee}</span>
+          </div>
+        </div>
+
+        {/* İstasyon Bazlı Fire Dağılımı (Bar Chart) */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6">İstasyon Bazlı Fire Dağılımı</h3>
+          <div className="h-72">
+            {data.scrap_distribution && data.scrap_distribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.scrap_distribution} layout="vertical" margin={{top: 5, right: 30, left: 40, bottom: 5}}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" opacity={0.2} />
+                  <XAxis type="number" stroke="#64748b" />
+                  <YAxis dataKey="name" type="category" tick={{fontSize: 11}} stroke="#64748b" width={80} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar 
+                    dataKey="value" 
+                    name="Fire Adedi" 
+                    radius={[0, 4, 4, 0]}
+                    label={{ position: 'right', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }}
+                  >
+                    {data.scrap_distribution?.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'][index % 6]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                <CheckCircle size={40} className="text-green-500/50 mb-3" />
+                <p>Bu aralıkta fire (scrap) verisi bulunmamaktadır.</p>
+              </div>
+            )}
+          </div>
+          
+          {data.scrap_distribution && data.scrap_distribution.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Toplam Fire Adedi</span>
+              <span className="text-lg font-bold text-red-600 dark:text-red-400">{data.kpis.total_scrap} Adet</span>
+            </div>
+          )}
         </div>
 
         {/* Veri Doğrulama ve Anomali Uyarı Tablosu */}
@@ -256,61 +378,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      {/* DETAYLI VARDİYA/İSTASYON VERİ TABLOSU */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-          <h3 className="font-bold text-slate-800 dark:text-white">Detaylı Üretim Kayıtları (Son 50 Kayıt)</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400">
-              <tr>
-                <th className="px-6 py-3 font-semibold">Tarih / Vardiya</th>
-                <th className="px-6 py-3 font-semibold">İstasyon</th>
-                <th className="px-6 py-3 font-semibold text-right">Üretim / Fire</th>
-                <th className="px-6 py-3 font-semibold text-right">Süre (Çal / Dur)</th>
-                <th className="px-6 py-3 font-semibold text-right">A / P / Q</th>
-                <th className="px-6 py-3 font-semibold text-right">OEE</th>
-                <th className="px-6 py-3 font-semibold text-center">Durum</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-              {data.table_data.map(row => (
-                <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 dark:text-slate-300">
-                  <td className="px-6 py-3 whitespace-nowrap">
-                    <div className="font-medium text-slate-900 dark:text-white">{row.date}</div>
-                    <div className="text-xs text-slate-500">Vardiya {row.shift}</div>
-                  </td>
-                  <td className="px-6 py-3">{row.workstation}</td>
-                  <td className="px-6 py-3 text-right">
-                    <span className="text-green-600 dark:text-green-400">{row.total_produced}</span> / <span className="text-red-500">{row.scrap_qty}</span>
-                  </td>
-                  <td className="px-6 py-3 text-right text-slate-500 dark:text-slate-400">
-                    {row.work_time} / {row.down_time}
-                  </td>
-                  <td className="px-6 py-3 text-right text-xs">
-                    % {row.a?.toFixed(1)} / % {row.p?.toFixed(1)} / % {row.q?.toFixed(1)}
-                  </td>
-                  <td className="px-6 py-3 text-right font-bold text-blue-600 dark:text-blue-400">
-                    % {row.oee?.toFixed(1)}
-                  </td>
-                  <td className="px-6 py-3 text-center">
-                    {row.is_valid ? 
-                      <span className="inline-block w-2 h-2 rounded-full bg-green-500" title="Geçerli"></span> : 
-                      <span className="inline-block w-2 h-2 rounded-full bg-red-500" title="Hatalı"></span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      <div className="text-center text-sm text-slate-400 mt-4">
-        * Yeni analitik görünüm için terminalde <b>npm install recharts</b> komutunun çalıştırılmış olması gerekir.
-      </div>
+      </>
+      )}
     </div>
   );
 }

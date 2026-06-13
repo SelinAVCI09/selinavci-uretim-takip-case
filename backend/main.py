@@ -190,6 +190,7 @@ async def get_dashboard_data(
     workstation: str = Query(None), 
     db: Session = Depends(get_db)
 ):
+    global_total = db.query(models.ProductionRecord).count()
     query = db.query(models.ProductionRecord)
     if start_date:
         query = query.filter(models.ProductionRecord.date >= start_date)
@@ -288,6 +289,13 @@ async def get_dashboard_data(
         {"name": "Gerçekleşen", "start": 0, "val": round(avg_oee, 2), "fill": "#3b82f6"}
     ]
     
+    scrap_ws = {}
+    for r in records:
+        if r.scrap_qty is not None and r.scrap_qty > 0:
+            ws_name = r.workstation_name if r.workstation_name else "Belirtilmemiş"
+            scrap_ws[ws_name] = scrap_ws.get(ws_name, 0) + r.scrap_qty
+    scrap_distribution = [{"name": k, "value": v} for k, v in sorted(scrap_ws.items(), key=lambda x: x[1], reverse=True)]
+    
     anomaly_counts = {}
     for r in suspicious_records:
         if r.validation_errors:
@@ -314,9 +322,11 @@ async def get_dashboard_data(
         "workstation_oee": ws_data,
         "downtime": downtime_data,
         "waterfall": waterfall_data,
+        "scrap_distribution": scrap_distribution,
         "anomalies": anomaly_data,
         "suspicious_count": len(suspicious_records),
         "total_records": len(records),
+        "global_total_records": global_total,
         "target_actual": {
             "target": round(target_prod),
             "actual": total_prod
