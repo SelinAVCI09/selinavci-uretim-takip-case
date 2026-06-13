@@ -50,6 +50,16 @@ export default function Filter() {
     }));
   };
 
+  const parseErrors = (errString) => {
+    if (!errString || errString === "null") return [];
+    try {
+      const parsed = JSON.parse(errString);
+      return Array.isArray(parsed) ? parsed : [{ message: errString, error_type: 'Bilinmeyen Hata' }];
+    } catch {
+      return [{ message: errString, error_type: 'Bilinmeyen Hata' }];
+    }
+  };
+
   const uniqueWorkstations = [...new Set(records.map(r => r.workstation_name).filter(Boolean))];
 
   const handleExportCSV = () => {
@@ -110,7 +120,29 @@ export default function Filter() {
               <tbody>
                 {filteredRecords.map(r => (
                   <tr key={r.record_id} className={`border-b dark:border-slate-700 ${r.is_valid ? 'hover:bg-slate-50 dark:hover:bg-slate-700/50' : 'bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40'}`}>
-                    <td className="px-6 py-3 font-medium text-slate-900 dark:text-white">#{r.record_id}</td><td className="px-6 py-3">{r.date}</td><td className="px-6 py-3">{r.shift}</td><td className="px-6 py-3">{r.workstation_name}</td><td className="px-6 py-3 truncate max-w-[200px]">{r.stock_name}</td><td className="px-6 py-3 font-semibold">% {r.oee?.toFixed(2) || 'N/A'}</td><td className="px-6 py-3">{r.is_valid ? <span className="text-green-600 flex items-center"><CheckCircle size={14} className="mr-1"/> Geçerli</span> : <span className="text-red-600 flex items-center"><AlertCircle size={14} className="mr-1"/> Hatalı</span>}</td>
+                <td className="px-6 py-3 font-medium text-slate-900 dark:text-white">#{r.record_id}</td>
+                <td className="px-6 py-3">{r.date}</td>
+                <td className="px-6 py-3">{r.shift}</td>
+                <td className="px-6 py-3">{r.workstation_name}</td>
+                <td className="px-6 py-3 truncate max-w-[200px]">{r.stock_name}</td>
+                <td className="px-6 py-3 font-semibold">% {r.oee?.toFixed(2) || 'N/A'}</td>
+                <td className="px-6 py-3 overflow-visible relative">
+                  {r.is_valid ? (
+                    <span className="text-green-600 flex items-center"><CheckCircle size={14} className="mr-1"/> Geçerli</span>
+                  ) : (
+                    <div className="group flex items-center">
+                      <span className="text-red-600 flex items-center cursor-help"><AlertCircle size={14} className="mr-1"/> Hatalı</span>
+                      <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-3 z-50">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white mb-2 border-b border-slate-100 dark:border-slate-700 pb-1">Hata Detayları:</p>
+                        <ul className="text-[11px] space-y-2 text-slate-600 dark:text-slate-400 whitespace-normal">
+                          {parseErrors(r.validation_errors).map((err, i) => (
+                            <li key={i} className="flex flex-col"><span className="font-semibold text-red-500 block">• {err.error_type}</span><span>{err.message || err}</span>{err.reason && <span className="italic opacity-80 mt-0.5 text-slate-500 block">💡 {err.reason}</span>}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </td>
                   </tr>
                 ))}
               </tbody>

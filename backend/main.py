@@ -1,6 +1,8 @@
 import json
 from datetime import datetime
 import pandas as pd
+from typing import Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -28,6 +30,25 @@ def get_db():
     finally:
         db.close()
 
+class RecordUpdate(BaseModel):
+    date: Optional[str] = None
+    work_order_no: Optional[str] = None
+    work_center_no: Optional[str] = None
+    work_center_name: Optional[str] = None
+    workstation_name: Optional[str] = None
+    stock_name: Optional[str] = None
+    shift: Optional[int] = None
+    availability: Optional[float] = None
+    performance: Optional[float] = None
+    quality: Optional[float] = None
+    oee: Optional[float] = None
+    work_time: Optional[float] = None
+    down_time: Optional[float] = None
+    planned_down_time: Optional[float] = None
+    unplanned_down_time: Optional[float] = None
+    total_produced: Optional[int] = None
+    scrap_qty: Optional[int] = None
+
 # CSV'de karakter hataları olabileceği için kolon isimlerini direkt index mantığıyla mapliyoruz
 EXPECTED_COLUMNS = [
     "record_id", "date", "work_order_no", "work_center_no", "work_center_name",
@@ -43,32 +64,35 @@ def validate_row(row):
     """
     errors = []
     
-    # 1. Eksik / Boş / Format Veri Kontrolü
+    # 1. Eksik / Boş / Format Veri Kontrolü (Zorunlu Alanlar)
     wo_no = str(row.get("work_order_no", ""))
-    if pd.isna(row.get("work_order_no")) or not wo_no.strip():
-        errors.append("İş Emri No eksik.")
+    if pd.isna(row.get("work_order_no")) or not wo_no.strip() or wo_no.lower() == "nan":
+        errors.append({"field": "work_order_no", "error_type": "Eksik Veri", "message": "İş Emri No boş bırakılamaz.", "reason": "Üretimin hangi iş emrine ait olduğu bilinmeden maliyet veya izlenebilirlik yapılamaz.", "action": "reddet"})
     else:
         # ".0" gibi float'a dönmüş stringleri temizliyoruz (Pandas bazen dönüştürür)
         wo_clean = wo_no.split('.')[0] 
         if not wo_clean.startswith("302") or len(wo_clean) != 10:
-            errors.append("İş Emri No formatı hatalı (302 ile başlayan 10 hane olmalı).")
+            errors.append({"field": "work_order_no", "error_type": "Format Hatası", "message": f"İş Emri No formatı hatalı: {wo_clean}", "reason": "Standart iş emri numaraları '302' ile başlamalı ve 10 haneli olmalıdır.", "action": "düzelt"})
 
     shift = row.get("shift")
     if pd.isna(shift) or shift not in [1, 2, 3]:
-        errors.append("Geçersiz Vardiya değeri (1, 2 veya 3 olmalı).")
+        errors.append({"field": "shift", "error_type": "Kritik Değer Hatası", "message": f"Geçersiz Vardiya: {shift}", "reason": "Üretim 3 vardiyalı düzende yapılmaktadır. Vardiya değeri 1, 2 veya 3 olmalıdır.", "action": "düzelt"})
+
+    if pd.isna(row.get("workstation_name")) or not str(row.get("workstation_name")).strip():
+        errors.append({"field": "workstation_name", "error_type": "Eksik Veri", "message": "İş İstasyonu bilgisi eksik.", "reason": "Performans ölçümü istasyon bazlı yapıldığı için bu alan zorunludur.", "action": "reddet"})
 
     # 2. Üretim Miktarı ve Fire İlişkisi
     total_prod = row.get("total_produced")
     scrap = row.get("scrap_qty")
     
     if pd.isna(total_prod) or total_prod < 0:
-        errors.append("Üretilen Miktar eksik veya sıfırdan küçük olamaz.")
+        errors.append({"field": "total_produced", "error_type": "Mantıksal Hata", "message": "Üretilen miktar negatif olamaz veya boş bırakılamaz.", "reason": "Fiziksel olarak 0'dan az ürün üretilemez.", "action": "düzelt"})
     if not pd.isna(scrap) and scrap < 0:
-        errors.append("Hatalı Üretilen Miktar negatif olamaz.")
+        errors.append({"field": "scrap_qty", "error_type": "Mantıksal Hata", "message": "Fire miktarı negatif olamaz.", "reason": "Hatalı ürün adedi eksi değer alamaz.", "action": "düzelt"})
         
-    if not pd.isna(total_prod) and not pd.isna(scrap):
+    if not pd.isna(total_prod) and not pd.isna(scrap) and total_prod >= 0 and scrap >= 0:
         if scrap > total_prod:
-            errors.append("Mantıksal Hata: Hatalı üretilen miktar, toplam üretimden büyük olamaz.")
+            errors.append({"field": "scrap_qty, total_produced", "error_type": "Tutarsızlık", "message": "Fire miktarı, toplam üretimden büyük.", "reason": "Hatalı üretilen ürün sayısı, üretilen toplam parçadan fazla olamaz.", "action": "düzelt"})
 
     # 3. Yüzde Aralık Kontrolleri (0 - 100)
     for col_key, col_name in [("availability", "Kullanılabilirlik (A)"), 
@@ -76,26 +100,56 @@ def validate_row(row):
                               ("oee", "OEE")]:
         val = row.get(col_key)
         if not pd.isna(val) and (val < 0 or val > 100):
-            errors.append(f"{col_name} değeri 0-100 aralığında olmalıdır.")
+            errors.append({"field": col_key, "error_type": "Aralık Hatası", "message": f"{col_name} değeri %0-100 dışında ({val}).", "reason": "Yüzdelik performans metrikleri matematiksel olarak 0 ile 100 arasında olmalıdır.", "action": "düzelt"})
+            
+    perf = row.get("performance")
+    if not pd.isna(perf):
+        if perf < 0:
+            errors.append({"field": "performance", "error_type": "Aralık Hatası", "message": f"Performans negatif olamaz ({perf}).", "reason": "Performans değeri 0'dan küçük olamaz.", "action": "düzelt"})
+        elif perf > 100:
+            errors.append({"field": "performance", "error_type": "Kapasite Aşımı Uyarısı", "message": f"Performans %100'ün üzerinde ({perf}).", "reason": "Teorik döngü süresi (Cycle Time) standartlarından daha hızlı çalışılmış olabilir. Standart sürelerin güncellenmesi gerekebilir.", "action": "uyar"})
             
     # 4. Sürelerin Tutarlılığı (Duruş = Planlı + Plansız)
     dt = row.get("down_time") or 0.0
     p_dt = row.get("planned_down_time") or 0.0
     up_dt = row.get("unplanned_down_time") or 0.0
+    wt = row.get("work_time") or 0.0
     
     if not pd.isna(row.get("down_time")):
-        # Float noktası karşılaştırması için küçük bir tolerans (0.01) bırakıyoruz
-        if abs(dt - (p_dt + up_dt)) > 0.01:
-            errors.append("Süre Tutarsızlığı: Toplam Duruş, Planlı ve Plansız duruşların toplamına eşit değil.")
-            
-    # 5. Tarih Kontrolü
-    if not pd.isna(row.get("date")):
+        if abs(dt - (p_dt + up_dt)) > 0.1:
+            errors.append({"field": "down_time", "error_type": "Tutarsızlık", "message": f"Duruş süreleri tutarsız (Planlı: {p_dt} + Plansız: {up_dt} != Toplam: {dt}).", "reason": "Alt duruş kırılımlarının toplamı, genel duruş süresine eşit olmalıdır.", "action": "düzelt"})
+
+    if dt > wt and wt > 0:
+        errors.append({"field": "down_time, work_time", "error_type": "Mantıksal Hata", "message": "Toplam Duruş, Çalışma Süresinden büyük.", "reason": "Makine, vardiya süresinden daha uzun süre duruş kaydedemez.", "action": "düzelt"})
+
+    # 5. Domain & Fiziksel Kurallar
+    if (total_prod or 0) > 0 and wt <= 0:
+        errors.append({"field": "total_produced, work_time", "error_type": "Fiziksel İmkansızlık", "message": "Çalışma süresi 0 iken üretim raporlanmış.", "reason": "Makine çalışmadan parça üretemez. Süre kaydı eksik olabilir.", "action": "düzelt"})
+
+    a = row.get("availability")
+    if dt > 0 and a == 100.0:
+        errors.append({"field": "availability, down_time", "error_type": "Mantıksal Hata", "message": "Duruş varken Kullanılabilirlik %100.", "reason": "Duruş yaşandığında Kullanılabilirlik metriginin (A) %100'den düşük olması gerekir.", "action": "düzelt"})
+
+    # 6. Tarih Kontrolü
+    if pd.isna(row.get("date")):
+        errors.append({"field": "date", "error_type": "Eksik Veri", "message": "Üretim tarihi eksik.", "reason": "Kayıtların zaman çizelgesine eklenebilmesi için tarih zorunludur.", "action": "reddet"})
+    else:
         try:
-            date_obj = pd.to_datetime(row["date"]).date()
+            date_val = row.get("date")
+            date_obj = pd.to_datetime(date_val).date() if hasattr(date_val, "date") else pd.to_datetime(date_val).date()
             if date_obj > datetime.utcnow().date():
-                errors.append("Üretim tarihi bugünden ileri bir tarih (gelecek) olamaz.")
+                errors.append({"field": "date", "error_type": "Mantıksal Hata", "message": f"Tarih gelecekte ({date_obj}).", "reason": "Gelecek bir tarihe gerçekleşmiş üretim kaydı girilemez.", "action": "düzelt"})
         except Exception:
-            errors.append("Geçersiz tarih formatı.")
+            errors.append({"field": "date", "error_type": "Format Hatası", "message": "Geçersiz tarih formatı.", "reason": "Sistem tarihi algılayamadı (Örn: YYYY-MM-DD bekleniyor).", "action": "reddet"})
+
+    # 7. Ek OEE ve Kapasite Kontrolleri
+    p = row.get("performance")
+    q = row.get("quality")
+    oee = row.get("oee")
+    if not pd.isna(a) and not pd.isna(p) and not pd.isna(q) and not pd.isna(oee):
+        calc_oee = (a / 100) * (p / 100) * (q / 100) * 100
+        if abs(calc_oee - oee) > 1.0: 
+            errors.append({"field": "oee", "error_type": "Matematiksel Tutarsızlık", "message": f"OEE Hatalı Hesaplanmış (Raporlanan: {oee}, Beklenen: {round(calc_oee,1)}).", "reason": "OEE değeri her zaman Kullanılabilirlik * Performans * Kalite çarpımına eşit olmalıdır.", "action": "düzelt"})
 
     return errors
 
@@ -139,7 +193,8 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         errors = validate_row(record_dict)
         
         for err in errors:
-            stats["error_breakdown"][err] = stats["error_breakdown"].get(err, 0) + 1
+            err_msg = err["message"] if isinstance(err, dict) else str(err)
+            stats["error_breakdown"][err_msg] = stats["error_breakdown"].get(err_msg, 0) + 1
             
         if row.get("date"):
             record_dict["date"] = pd.to_datetime(row["date"]).date()
@@ -174,6 +229,67 @@ async def clear_records(db: Session = Depends(get_db)):
     db.query(models.ProductionRecord).delete()
     db.commit()
     return {"message": "Tüm kayıtlar başarıyla silindi."}
+
+@app.put("/api/v1/records/{record_id}")
+async def update_record(record_id: int, update_data: RecordUpdate, db: Session = Depends(get_db)):
+    record = db.query(models.ProductionRecord).filter(models.ProductionRecord.record_id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+        
+    update_dict = update_data.dict(exclude_unset=True)
+    
+    # Değişiklikleri tespit edip loglayalım (Audit Trail)
+    changes = []
+    for key, value in update_dict.items():
+        old_val = getattr(record, key)
+        if key == "date" and value:
+            try: 
+                new_date = pd.to_datetime(value).date()
+                if old_val != new_date:
+                    changes.append({"field": key, "old": str(old_val), "new": str(new_date)})
+                    setattr(record, key, new_date)
+            except: pass
+        else:
+            if old_val != value:
+                changes.append({"field": key, "old": old_val, "new": value})
+                setattr(record, key, value)
+                
+    # Audit Trail Güncellemesi
+    if changes:
+        history = []
+        if record.audit_trail:
+            try: history = json.loads(record.audit_trail)
+            except: pass
+            
+        history.append({
+            "timestamp": datetime.utcnow().isoformat(),
+            "changes": changes
+        })
+        record.audit_trail = json.dumps(history, ensure_ascii=False)
+        
+    # Yeniden Validasyon Çalıştır
+    row_dict = {c.name: getattr(record, c.name) for c in record.__table__.columns if hasattr(record, c.name)}
+    errors = validate_row(row_dict)
+    record.is_valid = len(errors) == 0
+    record.validation_errors = json.dumps(errors, ensure_ascii=False) if errors else None
+    
+    db.commit()
+    return {
+        "message": "Kayıt güncellendi", 
+        "is_valid": record.is_valid, 
+        "errors": errors,
+        "audit_trail": json.loads(record.audit_trail) if record.audit_trail else []
+    }
+
+@app.delete("/api/v1/records/{record_id}")
+async def delete_single_record(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(models.ProductionRecord).filter(models.ProductionRecord.record_id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+        
+    db.delete(record)
+    db.commit()
+    return {"message": "Kayıt silindi"}
 
 @app.get("/api/v1/stats")
 async def get_stats(db: Session = Depends(get_db)):
@@ -302,7 +418,8 @@ async def get_dashboard_data(
             try:
                 errors = json.loads(r.validation_errors)
                 for e in errors:
-                    anomaly_counts[e] = anomaly_counts.get(e, 0) + 1
+                    err_msg = e["message"] if isinstance(e, dict) else str(e)
+                    anomaly_counts[err_msg] = anomaly_counts.get(err_msg, 0) + 1
             except:
                 pass
     anomaly_data = [{"error": k, "count": v} for k, v in anomaly_counts.items()]

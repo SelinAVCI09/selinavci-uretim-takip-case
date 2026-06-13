@@ -27,3 +27,4 @@ class ProductionRecord(Base):
 
     is_valid = Column(Boolean, default=True, index=True)
     validation_errors = Column(Text, nullable=True)  # Hataları JSON string olarak tutacağız
+    audit_trail = Column(Text, nullable=True)  # Düzenleme geçmişi (JSON formatında)
