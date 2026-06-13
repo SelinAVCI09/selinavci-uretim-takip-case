@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle } from 'lucide-react';
+import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle, Printer, Maximize2, X } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area
@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [availableWorkstations, setAvailableWorkstations] = useState([]);
   const [trendView, setTrendView] = useState('daily');
   const [trendOffset, setTrendOffset] = useState(0);
+  const [expandedChart, setExpandedChart] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -99,10 +100,140 @@ export default function Dashboard() {
     return null;
   };
 
+  // Grafik İçerikleri ve Açıklamaları (Modal için)
+  const chartContent = {
+    trend: {
+      title: `OEE Trendi (${trendView === 'daily' ? 'Günlük' : 'Haftalık'})`,
+      desc: "Seçilen tarih aralığındaki OEE (Genel Ekipman Verimliliği) değerlerinin zaman içindeki eğilimini (artış/azalış) gösterir. Performansın sürekli takibi ve sapmaların erken teşhisi için kullanılır.",
+      render: () => (
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={displayTrend}>
+            <defs>
+              <linearGradient id="colorOee" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+            <XAxis dataKey="date" tick={{fontSize: 12}} stroke="#64748b" />
+            <YAxis domain={[0, 100]} tick={{fontSize: 12}} stroke="#64748b" />
+            <Tooltip content={<CustomTooltip />} />
+            <Area type="monotone" dataKey="avg_oee" name="Ortalama OEE" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorOee)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      )
+    },
+    waterfall: {
+      title: "OEE Kayıp Analizi (Şelale)",
+      desc: "%100 mükemmel üretim teorisinden başlayarak Kullanılabilirlik (A), Performans (P) ve Kalite (Q) kayıplarının OEE oranını nasıl düşürdüğünü kademeli olarak gösterir. Kayıpların kaynağını tespit etmeye yarar.",
+      render: () => (
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.waterfall} margin={{top: 20, right: 30, left: 20, bottom: 5}}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+            <XAxis dataKey="name" tick={{fontSize: 11}} stroke="#64748b" interval={0} />
+            <YAxis domain={[0, 100]} tick={{fontSize: 12}} stroke="#64748b" />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="start" stackId="a" fill="transparent" />
+            <Bar dataKey="val" stackId="a" name="Değer (%)" radius={[4, 4, 4, 4]}>
+              {data.waterfall.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )
+    },
+    shift: {
+      title: "Vardiya Bazlı A, P, Q Karşılaştırması",
+      desc: "Farklı vardiyaların Kullanılabilirlik (A), Performans (P) ve Kalite (Q) metriklerini karşılaştırır. Hangi vardiyanın hangi alanda eğitime veya iyileştirmeye ihtiyacı olduğunu belirler.",
+      render: () => (
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.shift_performance}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+            <XAxis dataKey="shift" tick={{fontSize: 12}} stroke="#64748b" />
+            <YAxis domain={[0, 100]} tick={{fontSize: 12}} stroke="#64748b" />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend iconType="circle" />
+            <Bar dataKey="a" name="Kullanılabilirlik" fill="#10b981" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="p" name="Performans" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="q" name="Kalite" fill="#eab308" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )
+    },
+    downtime: {
+      title: "Duruş Nedenleri",
+      desc: "Makinelerin çalışmadığı sürelerin (duruşların) nedenlerine göre dağılımını gösterir. En çok zaman kaybettiren duruş sebeplerini (darboğazları) tespit ederek önleyici bakım kararları alınmasını sağlar.",
+      render: () => (
+        data.kpis.total_downtime > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={data.downtime} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
+                  {data.downtime.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                </Pie>
+                <Tooltip />
+                <Legend verticalAlign="bottom" height={36} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4 pointer-events-none">
+              <span className="block text-xl font-bold dark:text-white text-slate-800">{data.kpis.total_downtime}</span>
+              <span className="block text-xs text-slate-500">dk</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <CheckCircle size={40} className="text-green-500/50 mb-3" />
+            <p>Bu aralıkta duruş verisi bulunmamaktadır.</p>
+          </div>
+        )
+      )
+    },
+    workstation: {
+      title: "İş İstasyonu OEE Sıralaması",
+      desc: "Tesis içerisindeki iş istasyonlarının OEE performanslarını sıralar. Hangi hattın verimli çalıştığını, hangisinin genel kapasiteyi düşürdüğünü gösterir.",
+      render: () => (
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.workstation_oee} layout="vertical" margin={{top: 5, right: 30, left: 40, bottom: 5}}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" opacity={0.2} />
+            <XAxis type="number" domain={[0, 100]} stroke="#64748b" />
+            <YAxis dataKey="workstation" type="category" tick={{fontSize: 11}} stroke="#64748b" width={80} />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="avg_oee" name="OEE (%)" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
+          </BarChart>
+        </ResponsiveContainer>
+      )
+    },
+    scrap: {
+      title: "İstasyon Bazlı Fire Dağılımı",
+      desc: "Hangi iş istasyonunun ne kadar hatalı (fire) ürün çıkardığını gösterir. Kalite problemlerinin ve malzeme israfının kaynağını bulmak için analiz edilir.",
+      render: () => (
+        data.scrap_distribution && data.scrap_distribution.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data.scrap_distribution} layout="vertical" margin={{top: 5, right: 30, left: 40, bottom: 5}}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" opacity={0.2} />
+              <XAxis type="number" stroke="#64748b" />
+              <YAxis dataKey="name" type="category" tick={{fontSize: 11}} stroke="#64748b" width={80} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" name="Fire Adedi" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }}>
+                {data.scrap_distribution?.map((entry, index) => <Cell key={`cell-${index}`} fill={['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'][index % 6]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <CheckCircle size={40} className="text-green-500/50 mb-3" />
+            <p>Bu aralıkta fire (scrap) verisi bulunmamaktadır.</p>
+          </div>
+        )
+      )
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* BAŞLIK & FİLTRELER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Üretim Performans Özeti</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm">Gelişmiş analitik ve OEE verileri</p>
@@ -122,6 +253,10 @@ export default function Dashboard() {
               <option value="">Tüm İstasyonlar</option>
               {availableWorkstations.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
+          <button onClick={() => window.print()} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 transition-colors shadow-sm ml-2" title="Dashboard'u PDF olarak indirin">
+            <Printer size={16} className="mr-2" />
+            <span className="text-sm font-medium">PDF İndir / Yazdır</span>
+          </button>
           </div>
         </div>
       </div>
@@ -176,10 +311,10 @@ export default function Dashboard() {
         {/* OEE Trend Grafiği */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-slate-800 dark:text-white">
-              OEE Trendi ({trendView === 'daily' ? 'Günlük' : 'Haftalık'})
+            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 cursor-pointer hover:text-blue-500 transition-colors group" onClick={() => setExpandedChart('trend')} title="Büyüt ve Açıklamasını Gör">
+              OEE Trendi ({trendView === 'daily' ? 'Günlük' : 'Haftalık'}) <Maximize2 size={16} className="text-slate-400 group-hover:text-blue-500" />
             </h3>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 print:hidden">
               <select 
                 value={trendView} 
                 onChange={e => setTrendView(e.target.value)}
@@ -199,42 +334,17 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayTrend}>
-                <defs>
-                  <linearGradient id="colorOee" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                <XAxis dataKey="date" tick={{fontSize: 12}} stroke="#64748b" />
-                <YAxis domain={[0, 100]} tick={{fontSize: 12}} stroke="#64748b" />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="avg_oee" name="Ortalama OEE" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorOee)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartContent.trend.render()}
           </div>
         </div>
 
         {/* OEE Kayıp Şelale (Waterfall) Grafiği */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-6">OEE Kayıp Analizi (Şelale)</h3>
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 cursor-pointer hover:text-blue-500 transition-colors group" onClick={() => setExpandedChart('waterfall')} title="Büyüt ve Açıklamasını Gör">
+            OEE Kayıp Analizi (Şelale) <Maximize2 size={16} className="text-slate-400 group-hover:text-blue-500" />
+          </h3>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.waterfall} margin={{top: 20, right: 30, left: 20, bottom: 5}}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                <XAxis dataKey="name" tick={{fontSize: 11}} stroke="#64748b" interval={0} />
-                <YAxis domain={[0, 100]} tick={{fontSize: 12}} stroke="#64748b" />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="start" stackId="a" fill="transparent" />
-                <Bar dataKey="val" stackId="a" name="Değer (%)" radius={[4, 4, 4, 4]}>
-                  {data.waterfall.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {chartContent.waterfall.render()}
           </div>
         </div>
       </div>
@@ -243,49 +353,21 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Vardiya Bazlı Performans */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm lg:col-span-2">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-6">Vardiya Bazlı A, P, Q Karşılaştırması</h3>
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 cursor-pointer hover:text-blue-500 transition-colors group" onClick={() => setExpandedChart('shift')} title="Büyüt ve Açıklamasını Gör">
+            Vardiya Bazlı A, P, Q Karşılaştırması <Maximize2 size={16} className="text-slate-400 group-hover:text-blue-500" />
+          </h3>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.shift_performance}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                <XAxis dataKey="shift" tick={{fontSize: 12}} stroke="#64748b" />
-                <YAxis domain={[0, 100]} tick={{fontSize: 12}} stroke="#64748b" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" />
-                <Bar dataKey="a" name="Kullanılabilirlik" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="p" name="Performans" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="q" name="Kalite" fill="#eab308" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartContent.shift.render()}
           </div>
         </div>
 
         {/* Duruş Nedenleri Pareto (Pie) */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-6">Duruş Nedenleri</h3>
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 cursor-pointer hover:text-blue-500 transition-colors group" onClick={() => setExpandedChart('downtime')} title="Büyüt ve Açıklamasını Gör">
+            Duruş Nedenleri <Maximize2 size={16} className="text-slate-400 group-hover:text-blue-500" />
+          </h3>
           <div className="h-72 relative">
-            {data.kpis.total_downtime > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={data.downtime} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
-                      {data.downtime.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip />
-                    <Legend verticalAlign="bottom" height={36} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4 pointer-events-none">
-                  <span className="block text-xl font-bold dark:text-white text-slate-800">{data.kpis.total_downtime}</span>
-                  <span className="block text-xs text-slate-500">dk</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                <CheckCircle size={40} className="text-green-500/50 mb-3" />
-                <p>Bu aralıkta duruş verisi bulunmamaktadır.</p>
-              </div>
-            )}
+            {chartContent.downtime.render()}
           </div>
         </div>
       </div>
@@ -293,17 +375,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* İş İstasyonu OEE Sıralaması */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-6">İş İstasyonu OEE Sıralaması</h3>
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 cursor-pointer hover:text-blue-500 transition-colors group" onClick={() => setExpandedChart('workstation')} title="Büyüt ve Açıklamasını Gör">
+            İş İstasyonu OEE Sıralaması <Maximize2 size={16} className="text-slate-400 group-hover:text-blue-500" />
+          </h3>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.workstation_oee} layout="vertical" margin={{top: 5, right: 30, left: 40, bottom: 5}}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" opacity={0.2} />
-                <XAxis type="number" domain={[0, 100]} stroke="#64748b" />
-                <YAxis dataKey="workstation" type="category" tick={{fontSize: 11}} stroke="#64748b" width={80} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="avg_oee" name="OEE (%)" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartContent.workstation.render()}
           </div>
           <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Genel Ortalama OEE</span>
@@ -313,33 +389,11 @@ export default function Dashboard() {
 
         {/* İstasyon Bazlı Fire Dağılımı (Bar Chart) */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-6">İstasyon Bazlı Fire Dağılımı</h3>
-          <div className="h-72">
-            {data.scrap_distribution && data.scrap_distribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.scrap_distribution} layout="vertical" margin={{top: 5, right: 30, left: 40, bottom: 5}}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" opacity={0.2} />
-                  <XAxis type="number" stroke="#64748b" />
-                  <YAxis dataKey="name" type="category" tick={{fontSize: 11}} stroke="#64748b" width={80} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar 
-                    dataKey="value" 
-                    name="Fire Adedi" 
-                    radius={[0, 4, 4, 0]}
-                    label={{ position: 'right', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }}
-                  >
-                    {data.scrap_distribution?.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'][index % 6]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                <CheckCircle size={40} className="text-green-500/50 mb-3" />
-                <p>Bu aralıkta fire (scrap) verisi bulunmamaktadır.</p>
-              </div>
-            )}
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 cursor-pointer hover:text-blue-500 transition-colors group" onClick={() => setExpandedChart('scrap')} title="Büyüt ve Açıklamasını Gör">
+            İstasyon Bazlı Fire Dağılımı <Maximize2 size={16} className="text-slate-400 group-hover:text-blue-500" />
+          </h3>
+          <div className="h-72 relative">
+            {chartContent.scrap.render()}
           </div>
           
           {data.scrap_distribution && data.scrap_distribution.length > 0 && (
@@ -379,6 +433,30 @@ export default function Dashboard() {
         </div>
       </div>
       </>
+      )}
+
+      {/* GRAFİK BÜYÜTME (MODAL) EKRANI */}
+      {expandedChart && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm bg-slate-900/60 print:hidden" onClick={() => setExpandedChart(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+              <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
+                <Maximize2 size={22} className="text-blue-500" /> 
+                {chartContent[expandedChart].title}
+              </h2>
+              <button onClick={() => setExpandedChart(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors" title="Kapat">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="flex-1 p-6 min-h-0 relative">
+               {chartContent[expandedChart].render()}
+            </div>
+            <div className="p-6 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-100 dark:border-blue-800/50">
+              <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-2">Bu Grafik Ne Anlama Geliyor?</h4>
+              <p className="text-blue-700 dark:text-blue-400 leading-relaxed text-sm">{chartContent[expandedChart].desc}</p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

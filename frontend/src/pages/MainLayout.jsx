@@ -29,9 +29,9 @@ export default function MainLayout() {
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
+    <div className="flex h-screen print:h-auto bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden print:overflow-visible print:block">
       {/* Sol Menü (Sidebar) */}
-      <aside className={`bg-slate-900 dark:bg-slate-950 text-white flex flex-col shadow-xl z-10 transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+      <aside className={`print:hidden bg-slate-900 dark:bg-slate-950 text-white flex flex-col shadow-xl z-10 transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
         <div className="h-16 flex items-center px-5 border-b border-slate-800">
           <div className="flex items-center justify-center w-10 flex-shrink-0 font-extrabold text-xl text-blue-500">
             M
@@ -95,7 +95,7 @@ export default function MainLayout() {
         </div>
       </aside>
       {/* Ana İçerik Alanı (Outlet sayfaları buraya render eder) */}
-      <main className="flex-1 overflow-y-auto p-10 dark:text-slate-200"><Outlet /></main>
+      <main className="flex-1 overflow-y-auto print:overflow-visible print:block p-10 dark:text-slate-200"><Outlet /></main>
     </div>
   );
 }
