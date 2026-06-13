@@ -51,35 +51,35 @@ npm run dev
 
 ### 1. CSV Veri Yükleme (Import)
 Uygulama, verileri içe aktarırken kullanıcıya adım adım rehberlik eder:
-* **Başlangıç:** `!Import - Boş Durum`<br> Kapsamlı sürükle-bırak (drag & drop) destekli boş dosya yükleme alanı.
-* **Önizleme:** `!Import - Önizleme`<br> Dosya seçildiği an backend'e yollanmadan önce tarayıcıda ilk 5 satırın önizlemesinin gösterildiği aşama.
-* **Sonuç Raporu:** `!Import - Yükleme Sonucu`<br> Dosya yüklendikten sonra; kaç satırın geçerli, kaç satırın şüpheli veya kesin hatalı olduğunu ve kalite sorunlarının detaylı dökümünü gösteren sonuç ekranı.
+* **Başlangıç:** <br> !Import - Boş Durum <br> Kapsamlı sürükle-bırak (drag & drop) destekli boş dosya yükleme alanı.
+* **Önizleme:** <br> !Import - Önizleme <br> Dosya seçildiği an backend'e yollanmadan önce tarayıcıda ilk 5 satırın önizlemesinin gösterildiği aşama.
+* **Sonuç Raporu:** <br> !Import - Yükleme Sonucu <br> Dosya yüklendikten sonra; kaç satırın geçerli, kaç satırın şüpheli veya kesin hatalı olduğunu ve kalite sorunlarının detaylı dökümünü gösteren sonuç ekranı.
 
 ### 2. Dashboard ve Analitik Raporlar
 Üretim verilerinin tüm açılardan analiz edildiği, PDF olarak indirilebilir/yazdırılabilir gelişmiş yönetim paneli:
 
-* **Genel Performans ve Trendler:** `!Dashboard - Genel Görünüm`
+* **Genel Performans ve Trendler:** <br> !Dashboard - Genel Görünüm
   * **Filtreler ve Dışa Aktarma:** İş istasyonu bazlı dinamik filtreleme, tarih aralığı seçimi ve **PDF İndir/Yazdır** butonu.
   * **Canlı Vardiya Özeti:** Sisteme girilen en son vardiyanın OEE ve Üretim özetini gösteren dikkat çekici bilgi kartı.
   * **Kritik KPI Kartları:** Ortalama OEE, Toplam Üretim, Toplam Fire ve Toplam Duruş (dk) metrikleri.
   * **OEE Trend Grafiği:** Günlük ve Haftalık olarak görünümü değiştirilebilen, geçmişe dönük sayfalama destekli alan grafiği (Area Chart).
 
-* **Detaylı Kırılımlar ve Anomaliler:** `!Dashboard - Detaylı Analizler`
+* **Detaylı Kırılımlar ve Anomaliler:** <br> !Dashboard - Detaylı Analizler
   * **Vardiya APQ Karşılaştırması:** Kullanılabilirlik, Performans ve Kalite oranlarının vardiya bazlı bar grafiği.
   * **Duruş Nedenleri:** Planlı ve plansız duruşların pasta (pie) grafik ile dağılımı.
   * **OEE Sıralaması ve Fire Dağılımı:** Hangi iş istasyonunun ne kadar verimli çalıştığı ve hangi istasyonun daha çok fire (scrap) verdiğini gösteren sıralı grafikler.
   * **Anomali ve Doğrulama Hataları:** Sistemdeki "Kesin Hatalı" ve "Uyarı" statüsündeki kayıtların listesi. (Sistemik ve tekil hata ayrımı ile).
   * *Not: Tüm grafiklerin sağ üstündeki büyütme butonlarına tıklanarak grafikler tam ekran yapılabilir.*
 
-* **Grafik Büyütme (Modal):** `!Dashboard - Büyütülmüş Grafik`<br> Herhangi bir grafik büyütüldüğünde, grafiğin detaylı görünümü ve alt kısmında "Bu grafik ne anlama geliyor?" şeklinde yöneticiler için okuma rehberi sunulur.
+* **Grafik Büyütme (Modal):** <br> !Dashboard - Büyütülmüş Grafik <br> Herhangi bir grafik büyütüldüğünde, grafiğin detaylı görünümü ve alt kısmında "Bu grafik ne anlama geliyor?" şeklinde yöneticiler için okuma rehberi sunulur.
 
-* **Anomali Detaylı Arama:** `!Dashboard - Anomali Filtreleme`<br> Anomali tablosu büyütüldüğünde, sistemdeki tüm hatalar içerisinde metin bazlı anlık arama (Search) ve filtreleme yapılabilen özel modal ekranı.
+* **Anomali Detaylı Arama:** <br> !Dashboard - Anomali Filtreleme <br> Anomali tablosu büyütüldüğünde, sistemdeki tüm hatalar içerisinde metin bazlı anlık arama (Search) ve filtreleme yapılabilen özel modal ekranı.
 
 ### 3. Veri Validasyonu, Kalite Raporu ve Audit Trail
-`!Validasyon Ekranı`
+!Validasyon Ekranı
 
 ### 4. Hedef API Senkronizasyonu ve Gün/Vardiya Matrisi
-`!API Sync Ekranı`
+!API Sync Ekranı
 
 ---
 
