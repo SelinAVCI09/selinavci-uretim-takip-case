@@ -75,10 +75,19 @@ Uygulama, verileri içe aktarırken kullanıcıya adım adım rehberlik eder:
 
 * **Anomali Detaylı Arama:** <br> ![Dashboard Anomali Filtreleme](docs/dashboard4.png) <br> Anomali tablosu büyütüldüğünde, sistemdeki tüm hatalar içerisinde metin bazlı anlık arama (Search) ve filtreleme yapılabilen özel modal ekranı.
 
-### 3. Veri Validasyonu, Kalite Raporu ve Audit Trail
-![Validasyon Ekranı](docs/validation1.png)
+### 3. Dinamik Veri Filtreleme ve Dışa Aktarma
+Geniş veri setleri içerisinde anında sorgulama yapabilmenizi sağlayan gelişmiş tablo arayüzü:
+* **Gerçek Zamanlı Filtreleme:** <br> ![Filtrelenmiş Veri Görünümü](docs/filter1.png) <br> Tarih aralığı, vardiya, iş istasyonu, ürün adı ve OEE değer aralığına göre **anlık (sayfa yenilenmeden)** filtreleme yapılabilir. İstediğiniz kriterdeki verileri filtreledikten sonra tek tıkla **CSV olarak dışa aktarabilirsiniz.**
+* **Hatalı Kayıtları Ayıklama:** <br> ![Hatalı Kayıt Filtresi](docs/filter2.png) <br> Liste üzerinde sadece hatalı, şüpheli veya tamamen temiz (geçerli) kayıtları ekrana getirmek için özel durum filtrelemesi sunar.
 
-### 4. Hedef API Senkronizasyonu ve Gün/Vardiya Matrisi
+### 4. Veri Validasyonu, Kalite Raporu ve Audit Trail
+Sistemin kalbini oluşturan, kirli verileri tespit edip onarılmasını sağlayan yönetim paneli:
+* **Kalite Kontrol ve Hata Yönetimi:** <br> ![Validasyon Ekranı](docs/validation1.png) <br> Yüklenen veriler 14 farklı kurala göre test edilir ve ekranda raporlanır. Bu ekranda hata tipine veya İş Emri numarasına göre filtreleme yapılıp **tüm rapor CSV olarak indirilebilir.**
+  * **Kesin Hatalı (Müdahale Şart):** Mantıksal olarak imkansız olan (Örn: *Üretim 0 iken fire verilmesi veya İş İstasyonunun boş olması*) verilerdir. Sistem tarafından dışlanır ve düzeltilmeden hedef API'ye **asla gönderilmez**.
+  * **Uyarı (Şüpheli):** Teorik kapasite aşımı (OEE > %100) gibi fiziksel olarak mümkün ama şüpheli durumlardır. Uyarı niteliği taşır, sisteme kaydedilebilir.
+* **Dinamik Validasyon Ayarları:** <br> ![Validasyon Ayarları](docs/validation2.png) <br> Sistemin kalite denetimi yaparken hangi kuralları dikkate alıp hangilerini görmezden geleceğini (Örn: *Negatif üretime izin ver/verme*) UI üzerinden anlık olarak yönetmenizi sağlar. Ayarlar kaydedildiğinde sistem tüm kayıtları yeniden test eder.
+
+### 5. Hedef API Senkronizasyonu ve Gün/Vardiya Matrisi
 ![API Senkronizasyonu](docs/api_sync1.png)
 
 ---
