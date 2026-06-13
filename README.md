@@ -104,7 +104,7 @@ Bu bölüm %100 temizlenmiş verilerin hedef REST API'ye (Magna) aktarılmasın�
 Sistem, her bir üretim kaydı için **14 farklı kalite ve anomali kuralı** işletir. Ayarlar menüsünden açılıp kapatılabilen bu kurallar, hataların ciddiyetine göre **"Kesin Hatalı"** veya **"Uyarı"** olarak sınıflandırılır.
 
 | # | Kontrol Edilen Kural | Hata Örneği / Senaryo | Sınıflandırma | Aksiyon |
-| :--- | :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- | :--- |
 | 1 | **Eksik İş Emri** | İş Emri No boş bırakılamaz. | ❌ Kesin Hatalı | Reddet |
 | 2 | **İş Emri Formatı** | İş Emri 302 ile başlamalı ve 10 hane olmalıdır. | ❌ Kesin Hatalı | Düzelt |
 | 3 | **Vardiya Kontrolü** | Geçersiz Vardiya: 4 (Sadece 1,2,3 olabilir) | ❌ Kesin Hatalı | Düzelt |
