@@ -3,12 +3,36 @@ from datetime import datetime
 import pandas as pd
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
+import requests
+import os
+import time
+from dotenv import load_dotenv
 
 from database import engine, SessionLocal, Base
 import models
+
+# .env dosyası ana dizinde olduğu için tam yolunu belirtiyoruz
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(dotenv_path=env_path)
+
+API_KEY = os.getenv("API_KEY", "cand-selin-avci-80ch1b7u")
+EXTERNAL_API_URL = os.getenv("EXTERNAL_API_URL", "http://89.252.189.91:8983/api/v1/submit")
+
+# Senkronizasyon (Hedef Sistem) Logları
+class SyncLog(Base):
+    __tablename__ = "sync_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    production_date = Column(String, index=True)
+    shift = Column(Integer)
+    payload = Column(Text)
+    status_code = Column(Integer)
+    response_data = Column(Text)
+    is_success = Column(Boolean, default=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 
 # Veritabanı tablolarını oluştur
 Base.metadata.create_all(bind=engine)
@@ -48,6 +72,13 @@ class RecordUpdate(BaseModel):
     unplanned_down_time: Optional[float] = None
     total_produced: Optional[int] = None
     scrap_qty: Optional[int] = None
+
+class SyncPayload(BaseModel):
+    machine_count: int
+    total_production_units: int
+    oe_value: float
+    shift: int
+    production_date: str
 
 # CSV'de karakter hataları olabileceği için kolon isimlerini direkt index mantığıyla mapliyoruz
 EXPECTED_COLUMNS = [
@@ -556,3 +587,204 @@ async def get_dashboard_data(
         ],
         "workstations": list(set([r.workstation_name for r in records if r.workstation_name]))
     }
+
+# --- HEDEF SİSTEM SENKRONİZASYON (REST API) İŞLEMLERİ ---
+
+@app.post("/api/v1/sync/manual")
+def manual_sync(payload: SyncPayload, db: Session = Depends(get_db)):
+    """Kullanıcının tek bir vardiya hücresini (Manuel) anında göndermesini sağlar."""
+    headers = {"X-Production-Key": API_KEY, "Content-Type": "application/json"}
+    data = payload.dict()
+    try:
+        resp = requests.post(EXTERNAL_API_URL, json=data, headers=headers, timeout=15.0)
+        if resp.status_code == 429: # Rate Limit
+            time.sleep(60)
+            resp = requests.post(EXTERNAL_API_URL, json=data, headers=headers, timeout=15.0)
+            
+        is_success = resp.status_code == 200
+        log = SyncLog(
+            production_date=data["production_date"],
+            shift=data["shift"],
+            payload=json.dumps(data),
+            status_code=resp.status_code,
+            response_data=resp.text,
+            is_success=is_success
+        )
+        db.add(log)
+        db.commit()
+        return {"success": is_success, "status_code": resp.status_code, "message": resp.text}
+    except Exception as e:
+        log = SyncLog(
+            production_date=data["production_date"],
+            shift=data["shift"],
+            payload=json.dumps(data),
+            status_code=0,
+            response_data=str(e),
+            is_success=False
+        )
+        db.add(log)
+        db.commit()
+        return {"success": False, "status_code": 0, "message": str(e)}
+
+SYNC_STATE = {
+    "is_syncing": False,
+    "total": 0,
+    "processed": 0,
+    "success": 0,
+    "failed": 0
+}
+
+def run_sync_task_batch(groups_to_sync: list):
+    global SYNC_STATE
+    SYNC_STATE["is_syncing"] = True
+    SYNC_STATE["total"] = len(groups_to_sync)
+    SYNC_STATE["processed"] = 0
+    SYNC_STATE["success"] = 0
+    SYNC_STATE["failed"] = 0
+    
+    db = SessionLocal()
+    headers = {"X-Production-Key": API_KEY, "Content-Type": "application/json"}
+    
+    try:
+        # Tercih edilen Batch işlemi için listeyi gruplara (chunk) bölüyoruz. 
+        # İstek 10 KB'ı aşmasın diye 20'li paketler halinde gönderiyoruz.
+        batch_size = 20
+        batches = [groups_to_sync[i:i + batch_size] for i in range(0, len(groups_to_sync), batch_size)]
+        
+        for batch in batches:
+            if not SYNC_STATE["is_syncing"]: break
+            
+            try:
+                resp = requests.post(EXTERNAL_API_URL, json=batch, headers=headers, timeout=20.0)
+                
+                # EĞER HEDEF SİSTEM BATCH (DİZİ) KABUL ETMEYİP 422 DÖNERSE -> SINGLE OBJECT FALLBACK (Çok güçlü koruma)
+                if resp.status_code == 422:
+                    for item in batch:
+                        resp_single = requests.post(EXTERNAL_API_URL, json=item, headers=headers, timeout=10.0)
+                        if resp_single.status_code == 429: # Rate Limit
+                            time.sleep(60)
+                            resp_single = requests.post(EXTERNAL_API_URL, json=item, headers=headers, timeout=10.0)
+                        
+                        is_success = resp_single.status_code == 200
+                        log = SyncLog(production_date=item["production_date"], shift=item["shift"], payload=json.dumps(item), status_code=resp_single.status_code, response_data=resp_single.text, is_success=is_success)
+                        db.add(log)
+                        db.commit()
+                        if is_success: SYNC_STATE["success"] += 1
+                        else: SYNC_STATE["failed"] += 1
+                        SYNC_STATE["processed"] += 1
+                    continue # Bu batch bitti, diğerine geç
+                
+                # API Batch destekliyorsa Normal Akış:
+                if resp.status_code == 429:
+                    time.sleep(60)
+                    resp = requests.post(EXTERNAL_API_URL, json=batch, headers=headers, timeout=20.0)
+                    
+                is_success = resp.status_code == 200
+                for item in batch:
+                    log = SyncLog(production_date=item["production_date"], shift=item["shift"], payload=json.dumps(item), status_code=resp.status_code, response_data=resp.text, is_success=is_success)
+                    db.add(log)
+                db.commit()
+                
+                if is_success: SYNC_STATE["success"] += len(batch)
+                else: SYNC_STATE["failed"] += len(batch)
+                SYNC_STATE["processed"] += len(batch)
+                
+            except Exception as e:
+                # Tamamen ulaşılamaz durumlarda
+                for item in batch:
+                    log = SyncLog(production_date=item["production_date"], shift=item["shift"], payload=json.dumps(item), status_code=0, response_data=str(e), is_success=False)
+                    db.add(log)
+                db.commit()
+                SYNC_STATE["failed"] += len(batch)
+                SYNC_STATE["processed"] += len(batch)
+            
+            time.sleep(0.5) # Spam önleyici hafif bekleme
+    finally:
+        SYNC_STATE["is_syncing"] = False
+        db.close()
+
+@app.get("/api/v1/sync/preview")
+def get_sync_preview(db: Session = Depends(get_db)):
+    valid_records = db.query(models.ProductionRecord).filter(models.ProductionRecord.is_valid == True).all()
+    
+    # 1. Kayıtları Gün ve Vardiyaya göre grupla
+    groups = {}
+    for r in valid_records:
+        if not r.date or r.shift is None: continue
+        d_str = r.date.isoformat() if hasattr(r.date, "isoformat") else str(r.date)
+        key = (d_str, r.shift)
+        if key not in groups: groups[key] = []
+        groups[key].append(r)
+        
+    # 2. Geçmişte BİR KEZ BİLE BAŞARILI senkronize olmuş grupları (Idempotency için) çıkar
+    success_logs = db.query(SyncLog).filter(SyncLog.is_success == True).all()
+    synced_keys = set((log.production_date, log.shift) for log in success_logs)
+    
+    to_sync = []
+    raw_records_count = 0
+    for (d, s), records in groups.items():
+        if (d, s) in synced_keys:
+            continue # Daha önce gönderildi, Duplicate oluşumunu engeller
+            
+        raw_records_count += len(records)
+        machine_count = len(set(r.workstation_name for r in records if r.workstation_name))
+        total_prod = sum(r.total_produced for r in records if r.total_produced is not None)
+        valid_oees = [r.oee for r in records if r.oee is not None]
+        avg_oee = sum(valid_oees) / len(valid_oees) if valid_oees else 0.0
+        
+        # Hedef sistemin JSON yapısı
+        to_sync.append({
+            "machine_count": machine_count,
+            "total_production_units": total_prod,
+            "oe_value": round(avg_oee, 2),
+            "shift": s,
+            "production_date": d
+        })
+        
+    return {"pending_count": len(to_sync), "pending_payloads": to_sync, "pending_raw_records": raw_records_count}
+
+@app.post("/api/v1/sync/start")
+def start_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    global SYNC_STATE
+    if SYNC_STATE["is_syncing"]:
+        return {"message": "Senkronizasyon halihazırda arka planda çalışıyor."}
+        
+    preview = get_sync_preview(db)
+    to_sync = preview["pending_payloads"]
+    
+    if not to_sync:
+        return {"message": "Senkronize edilecek yeni veya başarısız veri bulunamadı."}
+        
+    # Async gönderimi kuyruğa al (Kullanıcı arayüzde beklemez)
+    background_tasks.add_task(run_sync_task_batch, to_sync)
+    return {"message": f"{len(to_sync)} vardiya özeti gönderim kuyruğuna alındı."}
+
+@app.get("/api/v1/sync/status")
+def sync_status():
+    return SYNC_STATE
+
+@app.get("/api/v1/sync/logs")
+def sync_logs(db: Session = Depends(get_db)):
+    # Arayüzdeki tabloya basmak için geçmiş işlemleri getir
+    logs = db.query(SyncLog).order_by(SyncLog.timestamp.desc()).limit(150).all()
+    
+    result = []
+    for log in logs:
+        parsed_payload = {}
+        if log.payload:
+            try:
+                parsed_payload = json.loads(log.payload)
+            except:
+                pass
+                
+        result.append({
+            "id": log.id,
+            "production_date": log.production_date,
+            "shift": log.shift,
+            "status_code": log.status_code,
+            "is_success": log.is_success,
+            "response_data": log.response_data,
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            "payload": parsed_payload
+        })
+    return result

@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { Send, Clock, CheckCircle, AlertTriangle, RefreshCw, Server, XCircle, Database, Calendar, Info } from 'lucide-react';
+import { Send, Clock, CheckCircle, AlertTriangle, RefreshCw, Server, XCircle, Database, Calendar, AlertCircle, Info } from 'lucide-react';
 
-export default function ApiSync() {
+export default function Sync() {
   const [preview, setPreview] = useState(null);
   const [syncState, setSyncState] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sendingManual, setSendingManual] = useState(null);
 
   const fetchDashboard = async () => {
     try {
@@ -19,9 +18,6 @@ export default function ApiSync() {
       setPreview(prevRes.data);
       setSyncState(stateRes.data);
       setLogs(logRes.data);
-      
-      // Inspect (Console) ekranında detaylı logları görmek için eklendi:
-      if (logRes.data.length > 0) console.log("--- HEDEF API İLETİŞİM LOGLARI ---", logRes.data);
     } catch (err) {
       console.error("Senkronizasyon verileri çekilemedi", err);
     } finally {
@@ -47,22 +43,6 @@ export default function ApiSync() {
     }
   };
 
-  const handleManualSend = async (payload) => {
-    const key = `${payload.production_date}-${payload.shift}`;
-    setSendingManual(key);
-    try {
-      await axios.post('http://localhost:8000/api/v1/sync/manual', payload);
-      // Gönderim bittikten sonra tabloyu ve logları güncelle
-      fetchDashboard();
-    } catch (err) {
-      console.error("Manuel gönderim hatası", err);
-      alert('Manuel gönderim sırasında hata oluştu.');
-      fetchDashboard(); // Başarısız bile olsa logu çekmek için
-    } finally {
-      setSendingManual(null);
-    }
-  };
-
   // Gün x Vardiya Matrisini Oluşturma
   const matrixData = useMemo(() => {
     if (!preview || !logs) return [];
@@ -71,11 +51,7 @@ export default function ApiSync() {
     // 1. Önce başarılı gönderimleri matrise ekle (Idempotent - Gönderilmişler)
     logs.filter(l => l.is_success).forEach(log => {
       if (!matrix[log.production_date]) matrix[log.production_date] = { 1: null, 2: null, 3: null };
-      matrix[log.production_date][log.shift] = { 
-        status: 'SUCCESS', 
-        statusCode: log.status_code,
-        payload: log.payload
-      };
+      matrix[log.production_date][log.shift] = { status: 'SUCCESS', statusCode: log.status_code };
     });
 
     // 2. Bekleyenleri (Yeni veya Hata almış Retry kayıtları) matrise ekle
@@ -92,17 +68,8 @@ export default function ApiSync() {
       };
     });
 
-    // SADECE Bekleyen VEYA Yeniden Denenecek olanların olduğu günleri filtrele
-    // Eğer bir günün tüm vardiyaları başarılıysa o günü ekrandan tamamen gizler
+    // Tarihe göre azalan (yeniden eskiye) sırala
     return Object.keys(matrix)
-      .filter(date => {
-        const s1 = matrix[date][1]?.status;
-        const s2 = matrix[date][2]?.status;
-        const s3 = matrix[date][3]?.status;
-        return ['PENDING', 'RETRY'].includes(s1) || 
-               ['PENDING', 'RETRY'].includes(s2) || 
-               ['PENDING', 'RETRY'].includes(s3);
-      })
       .sort((a, b) => new Date(b) - new Date(a))
       .map(date => ({
         date,
@@ -144,7 +111,7 @@ export default function ApiSync() {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {!syncState?.is_syncing ? (
                   stats.pending > 0 
-                    ? <span><strong>{preview?.pending_raw_records || 0} adet temiz kayıt</strong> birleştirilerek <strong>{stats.pending} vardiya paketi</strong> olarak gönderilmeyi bekliyor.</span>
+                    ? <span><strong>{stats.pending} adet</strong> vardiya grubu (yeni veya hatalı) gönderilmeyi bekliyor.</span>
                     : <span>Tüm veriler güncel. Gönderilecek yeni kayıt bulunamadı.</span>
                 ) : (
                   <span>Hedef sistem API'si ile haberleşiliyor. Arkaplanda işleniyor...</span>
@@ -194,19 +161,19 @@ export default function ApiSync() {
             <h3 className="font-bold text-slate-800 dark:text-white flex items-center">
               <Calendar size={18} className="mr-2 text-indigo-500"/> Gün × Vardiya Matrisi (Gönderim Önizlemesi)
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Sadece hedef sisteme gidecek veya hata almış kayıtların kırılımını gösterir.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Hedef sisteme gidecek veya daha önce gitmiş verilerin vardiya bazlı kırılımı.</p>
           </div>
           <div className="flex gap-4 text-xs font-medium text-slate-600 dark:text-slate-400">
             <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-blue-100 border border-blue-300 mr-1.5"></span> Bekliyor</span>
             <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-orange-100 border border-orange-300 mr-1.5"></span> Yeniden Denenecek</span>
+            <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-green-100 border border-green-300 mr-1.5"></span> Gönderildi</span>
           </div>
         </div>
         
-        {matrixData.length === 0 || stats.pending === 0 ? (
+        {matrixData.length === 0 ? (
           <div className="p-12 text-center text-slate-500 flex flex-col items-center">
-            <CheckCircle size={48} className="text-green-500 mb-4" />
-            <h3 className="text-lg font-bold text-slate-700 dark:text-white">Gönderilecek Yeni Veri Yok</h3>
-            <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Tüm temiz veriler hedef sisteme başarıyla senkronize edildi.<br/>Aşağıdaki log tablosundan geçmiş işlemleri inceleyebilirsiniz.</p>
+            <Info size={40} className="text-slate-300 mb-3" />
+            <p>Sistemde henüz valide edilmiş veya senkronize edilmiş hiçbir vardiya verisi bulunmuyor.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -227,8 +194,6 @@ export default function ApiSync() {
                     </td>
                     {[1, 2, 3].map(shiftNum => {
                       const cell = row.shifts[shiftNum];
-                      const cellKey = `${row.date}-${shiftNum}`;
-                      const isSending = sendingManual === cellKey;
                       return (
                         <td key={shiftNum} className="px-3 py-3 align-top">
                           {!cell ? (
@@ -236,18 +201,9 @@ export default function ApiSync() {
                               -
                             </div>
                           ) : cell.status === 'SUCCESS' ? (
-                            <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3 h-full relative transition-all duration-500">
-                              <div className="flex items-center justify-center mb-2">
-                                <CheckCircle size={16} className="text-green-500 mr-1.5" />
-                                <span className="text-xs font-bold text-green-700 dark:text-green-400 uppercase">Aktarıldı</span>
-                              </div>
-                              {cell.payload && (
-                                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5 mt-2 border-t border-green-200 dark:border-green-800/50 pt-2">
-                                  <div className="flex justify-between"><span>OEE:</span> <span className="font-bold text-slate-800 dark:text-slate-200">%{cell.payload.oe_value}</span></div>
-                                  <div className="flex justify-between"><span>Üretim:</span> <span className="font-bold text-slate-800 dark:text-slate-200">{cell.payload.total_production_units}</span></div>
-                                  {cell.payload.machine_count && <div className="flex justify-between"><span>Makine:</span> <span className="font-bold text-slate-800 dark:text-slate-200">{cell.payload.machine_count} Adet</span></div>}
-                                </div>
-                              )}
+                            <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3 h-full flex flex-col items-center justify-center text-center">
+                              <CheckCircle size={20} className="text-green-500 mb-1" />
+                              <span className="text-xs font-bold text-green-700 dark:text-green-400 uppercase">Aktarıldı</span>
                             </div>
                           ) : cell.status === 'RETRY' ? (
                             <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg p-3 h-full relative group">
@@ -256,7 +212,7 @@ export default function ApiSync() {
                                 <span className="text-xs font-bold text-orange-700 dark:text-orange-400 uppercase">Yeniden Denenecek</span>
                               </div>
                               <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5 mt-2 border-t border-orange-100 dark:border-orange-800/50 pt-2">
-                                <div className="flex justify-between"><span>OEE:</span> <span className="font-bold text-slate-800 dark:text-slate-200">%{cell.payload.oe_value}</span></div>
+                                <div className="flex justify-between"><span>OEE:</span> <span className="font-bold">%{cell.payload.oe_value}</span></div>
                                 <div className="flex justify-between"><span>Üretim:</span> <span className="font-bold">{cell.payload.total_production_units}</span></div>
                               </div>
                               {/* Hata Tooltip */}
@@ -267,9 +223,6 @@ export default function ApiSync() {
                                   <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
                                 </div>
                               )}
-                              <button disabled={isSending} onClick={() => handleManualSend(cell.payload)} className="mt-3 w-full py-1.5 bg-orange-600/90 text-white rounded text-[10px] font-bold hover:bg-orange-700 transition-colors flex items-center justify-center disabled:opacity-50">
-                                <Send size={10} className={`mr-1.5 ${isSending ? 'animate-pulse' : ''}`} /> {isSending ? 'Gönderiliyor...' : 'Manuel Gönder'}
-                              </button>
                             </div>
                           ) : (
                             <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3 h-full">
@@ -282,9 +235,6 @@ export default function ApiSync() {
                                 <div className="flex justify-between"><span>Üretim:</span> <span className="font-bold text-slate-800 dark:text-slate-200">{cell.payload.total_production_units}</span></div>
                                 <div className="flex justify-between"><span>Makine:</span> <span className="font-bold text-slate-800 dark:text-slate-200">{cell.payload.machine_count} Adet</span></div>
                               </div>
-                              <button disabled={isSending} onClick={() => handleManualSend(cell.payload)} className="mt-3 w-full py-1.5 bg-blue-600/90 text-white rounded text-[10px] font-bold hover:bg-blue-700 transition-colors flex items-center justify-center disabled:opacity-50">
-                                <Send size={10} className={`mr-1.5 ${isSending ? 'animate-pulse' : ''}`} /> {isSending ? 'Gönderiliyor...' : 'Manuel Gönder'}
-                              </button>
                             </div>
                           )}
                         </td>
@@ -348,10 +298,7 @@ export default function ApiSync() {
                     </td>
                     <td className="px-6 py-4 max-w-xs">
                        {log.is_success ? (
-                         <div className="flex flex-col gap-1">
-                           <span className="text-xs text-green-600 font-medium">İşlem onaylandı.</span>
-                           <span className="text-[10px] text-slate-500 font-mono line-clamp-2" title={log.response_data}>{log.response_data}</span>
-                         </div>
+                         <span className="text-xs text-slate-500 truncate block">İşlem onaylandı.</span>
                        ) : (
                          <div className="flex flex-col gap-1">
                            <span className="text-xs text-red-600 font-medium line-clamp-2" title={log.response_data}>{log.response_data || 'Sunucuya ulaşılamadı veya Timeout.'}</span>

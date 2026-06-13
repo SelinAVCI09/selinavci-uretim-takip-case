@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { AlertTriangle, CheckCircle, Edit2, Trash2, Save, X, History, Settings, Filter as FilterIcon, Search, RefreshCw, BarChart2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit2, Trash2, Save, X, History, Settings, Filter as FilterIcon, Search, RefreshCw, BarChart2, Download } from 'lucide-react';
 
 export default function Validation() {
   const [records, setRecords] = useState([]);
@@ -189,6 +189,27 @@ export default function Validation() {
     }
   };
 
+  // Filtrelenen veriyi CSV olarak indirme foksiyonu
+  const handleExportCSV = () => {
+    if (filteredRecords.length === 0) return alert('İndirilecek kayıt bulunamadı.');
+    
+    const headers = ["Kayit_ID", "Is_Emri", "Vardiya", "Toplam_Uretim", "Fire", "OEE", "Durum", "Hata_Sayisi"];
+    const csvRows = filteredRecords.map(r => {
+      const errorCount = parseErrors(r.validation_errors).length;
+      return [
+        r.record_id, r.work_order_no || 'Eksik', r.shift || '', r.total_produced || 0, 
+        r.scrap_qty || 0, r.oee || '', r.record_status, errorCount
+      ].join(",");
+    });
+    
+    const csvContent = "\uFEFF" + [headers.join(","), ...csvRows].join("\n"); // UTF-8 BOM ekliyoruz (Türkçe karakterler için)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `validation_raporu_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Üst Bilgi ve Butonlar */}
@@ -202,6 +223,9 @@ export default function Validation() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button onClick={handleExportCSV} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shadow-sm">
+            <Download size={16} className="mr-2" /> CSV İndir
+          </button>
           <button onClick={() => setIsSettingsOpen(true)} className="flex items-center px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-medium text-sm shadow-sm">
             <Settings size={16} className="mr-2" /> Validasyon Ayarları
           </button>

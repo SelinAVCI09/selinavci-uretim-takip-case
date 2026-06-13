@@ -95,9 +95,6 @@ export default function Import() {
     formData.append('file', file);
 
     try {
-      // YENİ CSV YÜKLENDİĞİNDE VERİTABANINI OTOMATİK OLARAK SİL (Sıfırla)
-      await axios.delete('http://localhost:8000/api/v1/records');
-
       const response = await axios.post('http://localhost:8000/api/v1/upload-csv', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
