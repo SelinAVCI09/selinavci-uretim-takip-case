@@ -87,27 +87,38 @@ Sistemin kalbini oluşturan, kirli verileri tespit edip onarılmasını sağlaya
   * **Uyarı (Şüpheli):** Teorik kapasite aşımı (OEE > %100) gibi fiziksel olarak mümkün ama şüpheli durumlardır. Uyarı niteliği taşır, sisteme kaydedilebilir.
 * **Dinamik Validasyon Ayarları:** <br> ![Validasyon Ayarları](docs/validation2.png) <br> Sistemin kalite denetimi yaparken hangi kuralları dikkate alıp hangilerini görmezden geleceğini (Örn: *Negatif üretime izin ver/verme*) UI üzerinden anlık olarak yönetmenizi sağlar. Ayarlar kaydedildiğinde sistem tüm kayıtları yeniden test eder.
 
-### 5. Hedef API Senkronizasyonu ve Gün/Vardiya Matrisi
-![API Senkronizasyonu](docs/api_sync1.png)
+### 5. Hedef API Senkronizasyonu ve Log Kayıtları
+Bu bölüm %100 temizlenmiş verilerin hedef REST API'ye (Magna) aktarılmasını ve izlenmesini sağlar.
+
+* **API Senkronizasyonu ve Vardiya Matrisi:** <br> ![API Senkronizasyonu](docs/api1.png) <br> Geçerli olan tüm üretim kayıtlarını Tarih ve Vardiya (1, 2, 3) bazında gruplayarak gösteren önizleme matrisidir. Kullanıcı, "Bekliyor" (Mavi) veya dış sistemden hata dönmüş "Yeniden Denenecek" (Turuncu) kayıtları manuel veya toplu olarak senkronize edebilir. Gönderilen verilerin OEE, Toplam Üretim ve Makine Listesi detayları matris hücrelerinde incelenebilir.
+
+* **API Gönderim Geçmişi (Log Kayıtları):** <br> ![API İletişim Logları](docs/api2.png) <br> Harici hedef sistemle kurulan tüm ağ iletişimlerinin detaylı olarak kaydedildiği bölümdür. Sistem aşağıdaki hedef API hata kodlarını tanır ve kusursuzca yönetir:
+  * **401 (Eksik veya geçersiz API key):** API yetkilendirme hatasıdır. Arayüzdeki "API Ayarları" üzerinden doğru Key girilerek düzeltilir.
+  * **413 (İstek gövdesi 10 KB sınırını aştı):** Toplu JSON boyutu çok büyük olduğunda alınır. Sistem bunu algıladığında Batch (Toplu) gönderimden çıkıp Fallback (Tekli/Chunk) moduna geçerek verileri iletir.
+  * **422 (Validasyon hatası):** Hedef sistemin kendi iş kurallarına (Örn: Üretim >= 1 olmalıdır) takılan verilerdir. Yanıttaki `detail` alanı loglanarak okunabilir şekilde gösterilir. Sistem bu kayıtları "Yeniden Denenecek" olarak ayırır.
+  * **429 (Rate limit aşıldı):** Saniyedeki istek limiti aşıldığında alınır. Sistem bu hatayı aldığında işlemi iptal etmez; **1 dakika bekleyerek** (Circuit Breaker / Pacing) gönderime otomatik olarak kaldığı yerden devam eder.
 
 ---
 
-## 🕵️ Tespit Edilen Hata Tipleri ve Validasyon Kuralları
-Sistem, her bir üretim kaydı için **14 farklı kalite ve anomali kuralı** işletir.
+## 🕵️ Tespit Edilen 14 Farklı Hata Tipi ve Validasyon Kuralları
+Sistem, her bir üretim kaydı için **14 farklı kalite ve anomali kuralı** işletir. Ayarlar menüsünden açılıp kapatılabilen bu kurallar, hataların ciddiyetine göre **"Kesin Hatalı"** veya **"Uyarı"** olarak sınıflandırılır.
 
-| Hata Sınıfı | Kontrol Edilen Kural | Hata Örneği / Senaryo | Aksiyon |
+| # | Kontrol Edilen Kural | Hata Örneği / Senaryo | Sınıflandırma | Aksiyon |
 | :--- | :--- | :--- | :--- |
-| **Eksik Veri** | İş Emri ve İş İstasyonu Doluluk | `İş İstasyonu bilgisi eksik.` | Reddet |
-| **Format Hatası** | İş Emri Formati | `İş Emri 302 ile başlamalı ve 10 hane olmalıdır.` | Düzelt |
-| **Kritik Değer** | Vardiya Kontrolü | `Geçersiz Vardiya: 4 (Sadece 1,2,3 olabilir)` | Düzelt |
-| **Geçersiz Miktar** | Toplam Üretim Miktarı | `Hedef sistem 0 veya negatif üretimi kabul etmez.` | Düzelt |
-| **Mantıksal Hata** | Fire (Scrap) Tutarlılığı | `Fire miktarı (60), Toplam üretimden (50) büyük.` | Düzelt |
-| **Aralık Hatası** | Yüzdelik Limitler | `Kalite (Q) değeri %100'den büyük olamaz.` | Düzelt |
-| **Tutarsızlık** | Duruş Süresi Dengesi | `Planlı(10) + Plansız(5) != Toplam Duruş(30)` | Düzelt |
-| **Fiziksel İmkansızlık**| Süresiz Üretim | `Çalışma süresi 0 iken 500 adet parça üretilmiş.` | Düzelt |
-| **Mantıksal Hata** | Duruş varken %100 A (Avail) | `Makine duruş yapmasına rağmen Kullanılabilirlik %100.` | Düzelt |
-| **Matematiksel Hata** | OEE Çapraz Kontrol | `OEE (%70) değeri A*P*Q (%85) çarpımına eşit değil.` | Düzelt |
-| **Uyarı (Kapasite)** | Performans Aşımı | `Performans (P) %105 - Makine teorik hızını aştı.` | Uyar |
+| 1 | **Eksik İş Emri** | İş Emri No boş bırakılamaz. | ❌ Kesin Hatalı | Reddet |
+| 2 | **İş Emri Formatı** | İş Emri 302 ile başlamalı ve 10 hane olmalıdır. | ❌ Kesin Hatalı | Düzelt |
+| 3 | **Vardiya Kontrolü** | Geçersiz Vardiya: 4 (Sadece 1,2,3 olabilir) | ❌ Kesin Hatalı | Düzelt |
+| 4 | **Eksik İş İstasyonu** | İş İstasyonu bilgisi boş bırakılamaz. | ❌ Kesin Hatalı | Reddet |
+| 5 | **Geçersiz Miktar** | Hedef sistem 0 veya negatif üretimi/fireyi kabul etmez. | ❌ Kesin Hatalı | Düzelt |
+| 6 | **Fire Tutarlılığı**| Fire miktarı (60), Toplam üretimden (50) büyük olamaz. | ❌ Kesin Hatalı | Düzelt |
+| 7 | **Yüzdelik Aralık** | A, P, Q veya OEE değeri %100'den büyük veya negatif. | ❌ Kesin Hatalı | Düzelt |
+| 8 | **Kapasite Aşımı** | Performans (P) %105 - Makine teorik hızını aştı. | ⚠️ Uyarı | Uyar |
+| 9 | **Duruş Tutarsızlığı** | Planlı(10) + Plansız(5) != Toplam Duruş(30) | ❌ Kesin Hatalı | Düzelt |
+| 10 | **Duruş > Çalışma** | Toplam Duruş süresi, Çalışma Süresinden büyük. | ❌ Kesin Hatalı | Düzelt |
+| 11 | **Süresiz Üretim** | Çalışma süresi 0 iken 500 adet parça üretilmiş. | ❌ Kesin Hatalı | Düzelt |
+| 12 | **Kullanılabilirlik Hatası**| Makine duruş yapmasına rağmen Kullanılabilirlik (A) %100. | ❌ Kesin Hatalı | Düzelt |
+| 13 | **Geçersiz/Gelecek Tarih** | Tarih bilgisi boş veya gelecek bir güne ait olamaz. | ❌ Kesin Hatalı | Reddet / Düzelt |
+| 14 | **OEE Çapraz Kontrol** | OEE değeri A*P*Q çarpımına eşit değil. | ❌ Kesin Hatalı | Düzelt |
 
 ---
 
