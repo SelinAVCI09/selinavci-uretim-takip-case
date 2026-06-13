@@ -12,6 +12,7 @@ export default function Import() {
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
   const [dbStats, setDbStats] = useState({ total: 0, valid: 0, warning: 0, error: 0 });
+  const [isDragging, setIsDragging] = useState(false);
 
   const fetchStats = async () => {
     try {
@@ -43,24 +44,49 @@ export default function Import() {
     }
   }, []);
 
+  const processFile = (selectedFile) => {
+    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+      setError("Lütfen sadece .csv uzantılı bir dosya yükleyin.");
+      return;
+    }
+    setFile(selectedFile);
+    setFileName(selectedFile.name);
+    setResult(null);
+    setError(null);
+    setUploadProgress(0);
+
+    // Yükleme öncesi ilk 5-6 satırın okunup önizlenmesi
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      const lines = text.split('\n').slice(0, 6).filter(line => line.trim() !== '');
+      const parsedLines = lines.map(line => line.split(','));
+      setFilePreview(parsedLines);
+    };
+    reader.readAsText(selectedFile.slice(0, 4096)); // Sadece ilk 4KB okunur
+  };
+
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
-      setFileName(selectedFile.name);
-      setResult(null);
-      setError(null);
-      setUploadProgress(0);
+      processFile(e.target.files[0]);
+    }
+  };
 
-      // Yükleme öncesi ilk 5-6 satırın okunup önizlenmesi
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target.result;
-        const lines = text.split('\n').slice(0, 6).filter(line => line.trim() !== '');
-        const parsedLines = lines.map(line => line.split(','));
-        setFilePreview(parsedLines);
-      };
-      reader.readAsText(selectedFile.slice(0, 4096)); // Sadece ilk 4KB okunur
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -146,8 +172,11 @@ export default function Import() {
       <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-all duration-300">
         {!file && !fileName ? (
           <div 
-            className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-12 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className={`border-2 border-dashed rounded-xl p-12 flex flex-col items-center justify-center transition-colors cursor-pointer ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
             onClick={() => fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             <UploadCloud size={56} className="text-blue-500 mb-4" />
             <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-200">CSV Dosyasını Seçin veya Sürükleyin</h3>

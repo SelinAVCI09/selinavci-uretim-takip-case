@@ -33,12 +33,12 @@ export default function MainLayout() {
       {/* Sol Menü (Sidebar) */}
       <aside className={`print:hidden bg-slate-900 dark:bg-slate-950 text-white flex flex-col shadow-xl z-10 transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
         <div className="h-16 flex items-center px-5 border-b border-slate-800">
-          <div className="flex items-center justify-center w-10 flex-shrink-0 font-extrabold text-xl text-blue-500">
+          <div className={`flex items-center flex-shrink-0 font-extrabold text-xl text-blue-500 transition-all duration-300 ${isSidebarOpen ? 'w-auto pl-1' : 'w-10 justify-center pl-0'}`}>
             M
           </div>
-          <div className={`flex items-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'w-32 opacity-100 ml-2' : 'w-0 opacity-0 ml-0'}`}>
+          <div className={`flex items-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'w-48 opacity-100' : 'w-0 opacity-0'}`}>
             <span className="text-blue-500 font-extrabold text-xl">AGNA</span>
-            <span className="font-bold text-xl ml-1.5">Takip</span>
+            <span className="font-semibold text-sm ml-2 text-slate-300 pt-0.5">Üretim Takip</span>
           </div>
         </div>
         <nav className="flex-1 py-6">
