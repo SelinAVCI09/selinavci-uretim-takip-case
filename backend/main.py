@@ -51,12 +51,17 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 
+# Yeni CSV Yüklemelerini ve Sunucu Başlangıçlarını ayırmak için Oturum Zaman Damgası
+LAST_IMPORT_TIME = datetime.utcnow()
+
 @app.on_event("startup")
 def clear_old_csv_records():
     """
     Backend baştan başlatıldığında önceki oturumdan kalan CSV kayıtlarını temizler.
     Ancak dış sisteme atılan API loglarını (SyncLog) geçmişi görmek adına kalıcı tutar.
     """
+    global LAST_IMPORT_TIME
+    LAST_IMPORT_TIME = datetime.utcnow()
     db = SessionLocal()
     try:
         db.query(models.ProductionRecord).delete()
@@ -252,13 +257,18 @@ def send_to_api_with_backoff(payload, headers, max_retries=3):
     delay = 2 # Başlangıç bekleme süresi (saniye)
     for attempt in range(max_retries):
         try:
-            resp = requests.post(EXTERNAL_API_URL, json=payload, headers=headers, timeout=15.0)
+            resp = requests.post(EXTERNAL_API_URL, json=payload, headers=headers, timeout=20.0)
             # Başarılı veya Validasyon (422) hatası ise doğrudan dön (tekrar denemeye gerek yok)
             if resp.status_code in [200, 422]:
                 return resp
             # 429 Rate Limit veya 5xx Server Error ise katlanarak bekle
-            time.sleep(delay)
-            delay *= 2  # Her hatada bekleme süresini ikiye katla (2s, 4s, 8s...)
+            if resp.status_code == 429:
+                time.sleep(60) # API Kuralı: 429 alınca tam 1 dakika bekle
+                continue
+                
+            if attempt < max_retries - 1:
+                time.sleep(delay)
+                delay *= 2
         except Exception as e:
             if attempt == max_retries - 1:
                 # Son deneme de başarısız olursa hatayı fırlat
@@ -289,8 +299,14 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
     # Veritabanına kolay eklemek için NaN değerleri None'a çeviriyoruz
     df = df.where(pd.notnull(df), None)
 
-    # Duplicate (Çift) Kayıtları engellemek için mevcut ID'leri alalım
-    existing_ids = {r[0] for r in db.query(models.ProductionRecord.record_id).all()}
+    # YENİ CSV YÜKLENDİĞİNDE ESKİ KAYITLARI TEMİZLE VE OTURUMU SIFIRLA
+    global LAST_IMPORT_TIME
+    LAST_IMPORT_TIME = datetime.utcnow()
+    db.query(models.ProductionRecord).delete()
+    db.commit()
+
+    # Yüklenen CSV'nin kendi içindeki çift kayıtları yakalamak için boş küme
+    existing_ids = set()
 
     stats = {"total_rows": 0, "imported": 0, "duplicates": 0, "valid": 0, "warning": 0, "error": 0, "error_breakdown": {}}
     records_to_insert = []
@@ -305,6 +321,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         if record_dict["record_id"] in existing_ids:
             stats["duplicates"] += 1
             continue
+        existing_ids.add(record_dict["record_id"])
 
         # Satır validasyonu
         errors = validate_row(record_dict)
@@ -383,6 +400,8 @@ async def clear_records(db: Session = Depends(get_db)):
     """
     Veritabanındaki tüm kayıtları siler (UI'dan dosya kaldırıldığında temizlik için).
     """
+    global LAST_IMPORT_TIME
+    LAST_IMPORT_TIME = datetime.utcnow()
     db.query(models.ProductionRecord).delete()
     db.commit()
     return {"message": "Tüm kayıtlar başarıyla silindi."}
@@ -733,6 +752,8 @@ def run_sync_task_batch(groups_to_sync: list):
                         if is_success: SYNC_STATE["success"] += 1
                         else: SYNC_STATE["failed"] += 1
                         SYNC_STATE["processed"] += 1
+                        
+                        time.sleep(1.0) # Kuyruk Yapısı (Pacing): Tek tek gönderirken rate limit yememek için 1sn bekle
                     continue # Bu batch bitti, diğerine geç
                 
                 is_success = resp.status_code == 200
@@ -773,9 +794,20 @@ def get_sync_preview(db: Session = Depends(get_db)):
         if key not in groups: groups[key] = []
         groups[key].append(r)
         
-    # 2. Geçmişte BİR KEZ BİLE BAŞARILI senkronize olmuş grupları (Idempotency için) çıkar
-    success_logs = db.query(SyncLog).filter(SyncLog.is_success == True).all()
-    synced_keys = set((log.production_date, log.shift) for log in success_logs)
+    # 2. SADECE BU OTURUM İÇİNDE (Son CSV yüklemesinden sonra) Başarılı senkronize olmuş logları al!
+    success_logs = db.query(SyncLog).filter(
+        SyncLog.is_success == True,
+        SyncLog.timestamp >= LAST_IMPORT_TIME
+    ).order_by(SyncLog.timestamp.desc()).all()
+    
+    synced_payloads = {}
+    for log in success_logs:
+        key = (log.production_date, log.shift)
+        if key not in synced_payloads:
+            try:
+                synced_payloads[key] = json.loads(log.payload) if log.payload else {}
+            except:
+                synced_payloads[key] = {}
     
     to_sync = []
     all_payloads = []
@@ -797,11 +829,27 @@ def get_sync_preview(db: Session = Depends(get_db)):
         }
         all_payloads.append(payload)
         
-        if (d, s) not in synced_keys:
+        # Eğer bu veri daha önce başarılı gönderilmişse ama RAKAMLAR DEĞİŞMİŞSE tekrar kuyruğa al!
+        is_already_synced = False
+        if (d, s) in synced_payloads:
+            last_synced = synced_payloads[(d, s)]
+            if (last_synced.get("oe_value") == payload["oe_value"] and
+                last_synced.get("total_production_units") == payload["total_production_units"] and
+                last_synced.get("machine_count") == payload["machine_count"]):
+                is_already_synced = True
+                
+        if not is_already_synced:
             to_sync.append(payload)
             raw_records_count += len(records)
         
-    return {"pending_count": len(to_sync), "pending_payloads": to_sync, "pending_raw_records": raw_records_count, "total_records": total_records, "all_payloads": all_payloads}
+    return {
+        "pending_count": len(to_sync), 
+        "pending_payloads": to_sync, 
+        "pending_raw_records": raw_records_count, 
+        "total_records": total_records, 
+        "all_payloads": all_payloads,
+        "session_start_time": LAST_IMPORT_TIME.isoformat() + "Z"
+    }
 
 @app.post("/api/v1/sync/start", tags=["4. Hedef Sistem Senkronizasyonu"], summary="Toplu Arkaplan Senkronizasyonunu Başlat", description="Kuyrukta bekleyen tüm paketleri arka planda (Background Task) asenkron olarak hedef API'ye aktarmaya başlar.")
 def start_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

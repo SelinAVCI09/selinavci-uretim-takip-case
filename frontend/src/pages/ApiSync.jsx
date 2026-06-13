@@ -44,7 +44,10 @@ export default function ApiSync() {
 
   const handleStartSync = async () => {
     try {
-      await axios.post('http://localhost:8000/api/v1/sync/start');
+      const res = await axios.post('http://localhost:8000/api/v1/sync/start');
+      if (res.data.message === "Senkronize edilecek yeni veya başarısız veri bulunamadı.") {
+        alert("Senkronize edilecek yeni bir veri bulunamadı. Tüm veriler zaten aktarılmış durumda.");
+      }
       fetchDashboard();
     } catch (err) {
       alert('Senkronizasyon başlatılırken hata oluştu.');
@@ -95,12 +98,13 @@ export default function ApiSync() {
 
   // Bekleyen (Gönderilecek) paketleri Excel/CSV olarak indirme
   const handleExportCSV = () => {
-    if (!preview || !preview.pending_payloads || preview.pending_payloads.length === 0) {
+    const payloadsToExport = preview?.all_payloads || [];
+    if (payloadsToExport.length === 0) {
       return alert('İndirilecek kayıt bulunamadı.');
     }
 
     const headers = ["Uretim_Tarihi", "Vardiya", "OEE", "Toplam_Uretim", "Makine_Sayisi", "Istasyonlar"];
-    const csvRows = preview.pending_payloads.map(p => {
+    const csvRows = payloadsToExport.map(p => {
       // İstasyon isimleri arasında virgül olabileceği için tırnak içine alıyoruz (Excel'de sütun kaymasını engeller)
       const machinesStr = `"${(p.machines || []).join(', ')}"`;
       return [
@@ -131,10 +135,16 @@ export default function ApiSync() {
       };
     });
 
+    // Bekleyen (Değişmiş veya yeni) verilerin listesi
+    const pendingKeys = new Set((preview.pending_payloads || []).map(p => `${p.production_date}-${p.shift}`));
+
     // 2. Logları (Geçmiş işlemleri) inceleyerek hücrelerin durumlarını belirle
-    // Loglar en yeniden eskiye sıralıdır. Her bir tarih-vardiya için EN SON işlemi buluyoruz.
+    // SADECE GÜNCEL OTURUM (Backend yeniden başlama / yeni dosya yükleme sonrası) loglarını matris için baz al!
+    const sessionStart = preview.session_start_time ? new Date(preview.session_start_time) : new Date(0);
     const latestLogs = {};
+    
     logs.forEach(log => {
+      if (new Date(log.timestamp) < sessionStart) return; // Eski oturumların loglarını matriste GÖSTERME (Hayalet engelleme)
       const key = `${log.production_date}-${log.shift}`;
       if (!latestLogs[key]) latestLogs[key] = log;
     });
@@ -151,6 +161,19 @@ export default function ApiSync() {
       // Çünkü veritabanı sıfırlanmış veya o kayıt artık listeden silinmiş demektir.
       if (!cell) {
         return;
+      }
+
+      // EĞER bu hücre backend tarafından "Gönderilecekler (pending)" listesine alınmışsa, 
+      // demek ki veri son gönderimden bu yana DEĞİŞMİŞTİR veya YENİDİR. 
+      // Bu yüzden eski başarılı logunu ezip "AKTARILDI" YAZMAMALIYIZ!
+      if (pendingKeys.has(key)) {
+         // Eğer son log BAŞARISIZ ise, "YENİDEN DENENECEK" (Turuncu) göster.
+         // Başarılı ise veri yeni değişmiş demektir, PENDING (Mavi) olarak kalsın.
+         if (!log.is_success) {
+            matrix[log.production_date][log.shift].status = 'RETRY';
+            matrix[log.production_date][log.shift].errorMsg = log.response_data;
+         }
+         return; 
       }
 
       matrix[log.production_date][log.shift] = {
@@ -175,6 +198,8 @@ export default function ApiSync() {
     const pending = preview?.pending_payloads?.length || 0;
     return { pending };
   }, [preview]);
+
+  const hasData = preview?.all_payloads && preview.all_payloads.length > 0;
 
   if (loading) return <div className="p-8 text-center text-slate-500">Veriler yükleniyor...</div>;
 
@@ -224,14 +249,14 @@ export default function ApiSync() {
               <div className="flex flex-col md:flex-row gap-3">
                 <button 
                   onClick={handleExportCSV} 
-                  disabled={stats.pending === 0}
+                  disabled={!hasData}
                   className="w-full md:w-auto flex items-center justify-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-md"
                 >
                   <Download size={18} className="mr-2" /> Excel'e Aktar
                 </button>
                 <button 
                   onClick={handleStartSync} 
-                  disabled={stats.pending === 0}
+                  disabled={!hasData}
                   className="w-full md:w-auto flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-md"
                 >
                   <RefreshCw size={18} className="mr-2" /> Senkronizasyonu Başlat
