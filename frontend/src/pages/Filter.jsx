@@ -7,7 +7,7 @@ export default function Filter() {
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    startDate: '', endDate: '', shifts: [], workstations: [], stockName: '', minOee: 0, showSuspicious: false
+    startDate: '', endDate: '', shifts: [], workstations: [], stockName: '', minOee: 0, showSuspicious: false, errorType: ''
   });
 
   useEffect(() => {
@@ -40,6 +40,7 @@ export default function Filter() {
     if (filters.stockName) data = data.filter(r => r.stock_name?.toLowerCase().includes(filters.stockName.toLowerCase()));
     if (filters.minOee > 0) data = data.filter(r => (r.oee || 0) >= filters.minOee);
     if (filters.showSuspicious) data = data.filter(r => r.is_valid === false);
+    if (filters.errorType) data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e.error_type === filters.errorType));
     setFilteredRecords(data);
   };
 
@@ -61,6 +62,7 @@ export default function Filter() {
   };
 
   const uniqueWorkstations = [...new Set(records.map(r => r.workstation_name).filter(Boolean))];
+  const uniqueErrorTypes = [...new Set(records.filter(r => !r.is_valid).flatMap(r => parseErrors(r.validation_errors).map(err => err.error_type)).filter(Boolean))];
 
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return;
@@ -106,8 +108,18 @@ export default function Filter() {
           </div>
           <div className="space-y-4">
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Minimum OEE Değeri: %{filters.minOee}</label><input type="range" min="0" max="100" value={filters.minOee} onChange={e => setFilters({...filters, minOee: Number(e.target.value)})} className="w-full mt-2" /></div>
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-3">
               <label className="flex items-center cursor-pointer p-3 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800/50 rounded-lg text-orange-800 dark:text-orange-300 font-medium text-sm transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/50"><input type="checkbox" checked={filters.showSuspicious} onChange={e => setFilters({...filters, showSuspicious: e.target.checked})} className="mr-3 w-5 h-5 accent-orange-600 rounded"/>Sadece Şüpheli / Hatalı Kayıtları Göster</label>
+              
+              {filters.showSuspicious && uniqueErrorTypes.length > 0 && (
+                <div className="animate-in fade-in slide-in-from-top-2">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Hata Nedeni / Tipi</label>
+                  <select value={filters.errorType} onChange={e => setFilters({...filters, errorType: e.target.value})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
+                    <option value="">Tüm Hata Tipleri</option>
+                    {uniqueErrorTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
         </div>
