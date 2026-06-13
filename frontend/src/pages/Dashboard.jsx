@@ -411,9 +411,15 @@ export default function Dashboard() {
           </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Sistemde şüpheli değerler veya hatalar tespit edildi.</p>
           
-          <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 mb-4 flex justify-between items-center">
-            <span className="text-red-800 dark:text-red-300 font-semibold">Toplam Hatalı Kayıt</span>
-            <span className="text-2xl font-bold text-red-600 dark:text-red-400">{data.suspicious_count}</span>
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 mb-4 flex flex-col gap-2">
+            <div className="flex justify-between items-center border-b border-red-100 dark:border-red-800/30 pb-2">
+              <span className="text-red-800 dark:text-red-300 font-semibold">Kesin Hatalı Kayıt</span>
+              <span className="text-2xl font-bold text-red-600 dark:text-red-400">{data.error_count}</span>
+            </div>
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-orange-800 dark:text-orange-300 font-semibold">Uyarı / Şüpheli Kayıt</span>
+              <span className="text-xl font-bold text-orange-500 dark:text-orange-400">{data.warning_count}</span>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto pr-2">

@@ -26,5 +26,6 @@ class ProductionRecord(Base):
     scrap_qty = Column(Integer, nullable=True)
 
     is_valid = Column(Boolean, default=True, index=True)
+    record_status = Column(String, default="valid", index=True) # "valid", "warning", "error"
     validation_errors = Column(Text, nullable=True)  # Hataları JSON string olarak tutacağız
     audit_trail = Column(Text, nullable=True)  # Düzenleme geçmişi (JSON formatında)

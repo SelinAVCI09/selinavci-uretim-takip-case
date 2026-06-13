@@ -135,7 +135,16 @@ export default function Validation() {
                 {records.map((record) => (
                  <React.Fragment key={record.record_id}> 
                     <tr className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                      <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">#{record.record_id}</td>
+                      <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
+                        <div className="flex flex-col items-start gap-1.5">
+                          <span>#{record.record_id}</span>
+                          {record.record_status === 'error' ? (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Kesin Hatalı</span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Uyarı</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="dark:text-slate-200 font-semibold">{record.work_order_no || 'Eksik İş Emri'}</div>
                         <div className="text-xs text-slate-400 dark:text-slate-500">{record.stock_name || 'Bilinmeyen Stok'}</div>

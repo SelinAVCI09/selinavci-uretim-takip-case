@@ -178,7 +178,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
     # Duplicate (Çift) Kayıtları engellemek için mevcut ID'leri alalım
     existing_ids = {r[0] for r in db.query(models.ProductionRecord.record_id).all()}
 
-    stats = {"total_rows": 0, "imported": 0, "duplicates": 0, "valid": 0, "suspicious": 0, "error_breakdown": {}}
+    stats = {"total_rows": 0, "imported": 0, "duplicates": 0, "valid": 0, "warning": 0, "error": 0, "error_breakdown": {}}
     records_to_insert = []
 
     for idx, row in df.iterrows():
@@ -199,11 +199,22 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         if row.get("date"):
             record_dict["date"] = pd.to_datetime(row["date"]).date()
             
-        record_dict["is_valid"] = len(errors) == 0
+        is_valid = len(errors) == 0
+        record_dict["is_valid"] = is_valid
+        
+        if is_valid:
+            record_dict["record_status"] = "valid"
+            stats["valid"] += 1
+        elif any(isinstance(e, dict) and e.get("action") in ["reddet", "düzelt"] for e in errors):
+            record_dict["record_status"] = "error"
+            stats["error"] += 1
+        else:
+            record_dict["record_status"] = "warning"
+            stats["warning"] += 1
+            
         record_dict["validation_errors"] = json.dumps(errors, ensure_ascii=False) if errors else None
         
         records_to_insert.append(models.ProductionRecord(**record_dict))
-        stats["valid" if record_dict["is_valid"] else "suspicious"] += 1
         stats["imported"] += 1
 
     db.add_all(records_to_insert)
@@ -212,13 +223,15 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
     return {"message": "CSV yükleme tamamlandı", "summary": stats}
 
 @app.get("/api/v1/records")
-async def get_records(is_valid: bool = None, db: Session = Depends(get_db)):
+async def get_records(is_valid: bool = None, record_status: str = None, db: Session = Depends(get_db)):
     """
-    Veritabanındaki kayıtları getirir. is_valid parametresi ile filtrelenebilir.
+    Veritabanındaki kayıtları getirir. is_valid veya record_status parametresi ile filtrelenebilir.
     """
     query = db.query(models.ProductionRecord)
     if is_valid is not None:
         query = query.filter(models.ProductionRecord.is_valid == is_valid)
+    if record_status is not None:
+        query = query.filter(models.ProductionRecord.record_status == record_status)
     return query.limit(5000).all() # Frontend'de rahat filtreleme için limiti artırdık
 
 @app.delete("/api/v1/records")
@@ -271,6 +284,14 @@ async def update_record(record_id: int, update_data: RecordUpdate, db: Session =
     row_dict = {c.name: getattr(record, c.name) for c in record.__table__.columns if hasattr(record, c.name)}
     errors = validate_row(row_dict)
     record.is_valid = len(errors) == 0
+    
+    if len(errors) == 0:
+        record.record_status = "valid"
+    elif any(isinstance(e, dict) and e.get("action") in ["reddet", "düzelt"] for e in errors):
+        record.record_status = "error"
+    else:
+        record.record_status = "warning"
+        
     record.validation_errors = json.dumps(errors, ensure_ascii=False) if errors else None
     
     db.commit()
@@ -296,8 +317,15 @@ async def get_stats(db: Session = Depends(get_db)):
     """Veritabanındaki güncel kayıt istatistiklerini döner."""
     total = db.query(models.ProductionRecord).count()
     valid = db.query(models.ProductionRecord).filter(models.ProductionRecord.is_valid == True).count()
-    suspicious = db.query(models.ProductionRecord).filter(models.ProductionRecord.is_valid == False).count()
-    return {"total": total, "valid": valid, "suspicious": suspicious}
+    warning = db.query(models.ProductionRecord).filter(models.ProductionRecord.record_status == "warning").count()
+    error = db.query(models.ProductionRecord).filter(models.ProductionRecord.record_status == "error").count()
+    
+    # Geriye dönük uyumluluk için (eski veritabanı yapısı kaldıysa)
+    if valid == 0 and warning == 0 and error == 0:
+        valid = db.query(models.ProductionRecord).filter(models.ProductionRecord.is_valid == True).count()
+        error = db.query(models.ProductionRecord).filter(models.ProductionRecord.is_valid == False).count()
+        
+    return {"total": total, "valid": valid, "warning": warning, "error": error}
 
 @app.get("/api/v1/dashboard-data")
 async def get_dashboard_data(
@@ -319,6 +347,9 @@ async def get_dashboard_data(
     valid_records = [r for r in records if r.is_valid]
     suspicious_records = [r for r in records if not r.is_valid]
     
+    warning_records = [r for r in suspicious_records if getattr(r, "record_status", "") == "warning"]
+    error_records = [r for r in suspicious_records if getattr(r, "record_status", "") not in ["valid", "warning"]]
+
     valid_oee_records = [r.oee for r in valid_records if r.oee is not None]
     avg_oee = sum(valid_oee_records) / len(valid_oee_records) if valid_oee_records else 0
     
@@ -442,6 +473,8 @@ async def get_dashboard_data(
         "scrap_distribution": scrap_distribution,
         "anomalies": anomaly_data,
         "suspicious_count": len(suspicious_records),
+        "warning_count": len(warning_records),
+        "error_count": len(error_records),
         "total_records": len(records),
         "global_total_records": global_total,
         "target_actual": {
@@ -461,8 +494,9 @@ async def get_dashboard_data(
                 "a": r.availability,
                 "p": r.performance,
                 "q": r.quality,
-                "oee": r.oee,
-                "is_valid": r.is_valid
+            "oee": r.oee,
+            "is_valid": r.is_valid,
+            "record_status": getattr(r, "record_status", "valid")
             } for r in records[:50]
         ],
         "workstations": list(set([r.workstation_name for r in records if r.workstation_name]))

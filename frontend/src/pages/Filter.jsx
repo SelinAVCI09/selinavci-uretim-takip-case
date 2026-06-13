@@ -7,7 +7,7 @@ export default function Filter() {
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    startDate: '', endDate: '', shifts: [], workstations: [], stockName: '', minOee: 0, showSuspicious: false, errorType: ''
+    startDate: '', endDate: '', shifts: [], workstations: [], stockName: '', minOee: 0, statusFilter: 'all', errorType: ''
   });
 
   useEffect(() => {
@@ -39,8 +39,12 @@ export default function Filter() {
     if (filters.workstations.length > 0) data = data.filter(r => filters.workstations.includes(r.workstation_name));
     if (filters.stockName) data = data.filter(r => r.stock_name?.toLowerCase().includes(filters.stockName.toLowerCase()));
     if (filters.minOee > 0) data = data.filter(r => (r.oee || 0) >= filters.minOee);
-    if (filters.showSuspicious) data = data.filter(r => r.is_valid === false);
-    if (filters.errorType) data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e.error_type === filters.errorType));
+    if (filters.statusFilter === 'valid') data = data.filter(r => r.is_valid === true);
+    if (filters.statusFilter === 'warning') data = data.filter(r => r.record_status === 'warning');
+    if (filters.statusFilter === 'error') data = data.filter(r => r.record_status === 'error' || (!r.is_valid && !r.record_status)); // Geriye dönük uyumluluk
+    if (filters.statusFilter !== 'all' && filters.errorType) {
+      data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e.error_type === filters.errorType));
+    }
     setFilteredRecords(data);
   };
 
@@ -109,9 +113,15 @@ export default function Filter() {
           <div className="space-y-4">
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Minimum OEE Değeri: %{filters.minOee}</label><input type="range" min="0" max="100" value={filters.minOee} onChange={e => setFilters({...filters, minOee: Number(e.target.value)})} className="w-full mt-2" /></div>
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-3">
-              <label className="flex items-center cursor-pointer p-3 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800/50 rounded-lg text-orange-800 dark:text-orange-300 font-medium text-sm transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/50"><input type="checkbox" checked={filters.showSuspicious} onChange={e => setFilters({...filters, showSuspicious: e.target.checked})} className="mr-3 w-5 h-5 accent-orange-600 rounded"/>Sadece Şüpheli / Hatalı Kayıtları Göster</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Kayıt Durumu</label>
+              <select value={filters.statusFilter} onChange={e => setFilters({...filters, statusFilter: e.target.value})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
+                <option value="all">Tüm Kayıtlar</option>
+                <option value="valid">✅ Sadece Geçerli Kayıtlar</option>
+                <option value="warning">⚠️ Sadece Uyarılar</option>
+                <option value="error">❌ Sadece Kesin Hatalı Kayıtlar</option>
+              </select>
               
-              {filters.showSuspicious && uniqueErrorTypes.length > 0 && (
+              {['warning', 'error'].includes(filters.statusFilter) && uniqueErrorTypes.length > 0 && (
                 <div className="animate-in fade-in slide-in-from-top-2">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Hata Nedeni / Tipi</label>
                   <select value={filters.errorType} onChange={e => setFilters({...filters, errorType: e.target.value})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
@@ -143,7 +153,9 @@ export default function Filter() {
                     <span className="text-green-600 flex items-center"><CheckCircle size={14} className="mr-1"/> Geçerli</span>
                   ) : (
                     <div className="group flex items-center">
-                      <span className="text-red-600 flex items-center cursor-help"><AlertCircle size={14} className="mr-1"/> Hatalı</span>
+                          <span className={`flex items-center cursor-help font-medium ${r.record_status === 'warning' ? 'text-orange-500' : 'text-red-600'}`}>
+                            <AlertCircle size={14} className="mr-1"/> {r.record_status === 'warning' ? 'Uyarı' : 'Hatalı'}
+                          </span>
                       <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-3 z-50">
                         <p className="text-xs font-bold text-slate-800 dark:text-white mb-2 border-b border-slate-100 dark:border-slate-700 pb-1">Hata Detayları:</p>
                         <ul className="text-[11px] space-y-2 text-slate-600 dark:text-slate-400 whitespace-normal">
