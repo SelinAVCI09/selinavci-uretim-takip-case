@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 import pandas as pd
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -37,7 +37,19 @@ class SyncLog(Base):
 # Veritabanı tablolarını oluştur
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Magna Üretim Takip API")
+tags_metadata = [
+    {"name": "1. Veri İçe Aktarma ve Ayarlar", "description": "CSV verilerinin yüklenmesi ve sistem kalite kurallarının yönetimi."},
+    {"name": "2. Veri Doğrulama (Validation)", "description": "Şüpheli kayıtların incelenmesi, güncellenmesi, silinmesi ve yeniden doğrulanması işlemleri."},
+    {"name": "3. Raporlar ve Gösterge Paneli", "description": "Dashboard için OEE, fire ve duruş analizi istatistiklerinin çekilmesi."},
+    {"name": "4. Hedef Sistem Senkronizasyonu", "description": "Temiz kayıtların Magna hedef REST API'sine gönderimi, Idempotency ve log takibi."}
+]
+
+app = FastAPI(
+    title="Magna Üretim Takip REST API",
+    description="Bu API; üretim raporlarını alır, kalite kurallarına göre doğrular ve başarılı olanları Magna hedef sistemine aktarır.",
+    version="1.0.0",
+    openapi_tags=tags_metadata
+)
 
 @app.on_event("startup")
 def clear_old_csv_records():
@@ -86,12 +98,30 @@ class RecordUpdate(BaseModel):
     total_produced: Optional[int] = None
     scrap_qty: Optional[int] = None
 
+    class Config:
+        schema_extra = {
+            "example": {
+                "work_order_no": "3021234567",
+                "shift": 1,
+                "workstation_name": "IMM-2700-1",
+                "total_produced": 4500,
+                "scrap_qty": 20,
+                "oee": 87.3,
+                "work_time": 480
+            }
+        }
+
 class SyncPayload(BaseModel):
-    machine_count: int
-    total_production_units: int
-    oe_value: float
-    shift: int
-    production_date: str
+    machine_count: int = Field(..., description="Vardiyada aktif makine sayısı", example=12)
+    total_production_units: int = Field(..., description="Toplam üretim adedi", example=4500)
+    oe_value: float = Field(..., description="Ekipman verimliliği (yüzde 0-100)", example=87.3)
+    shift: int = Field(..., description="Vardiya (1=Sabah, 2=Öğle, 3=Gece)", example=1)
+    production_date: str = Field(..., description="Üretim tarihi (YYYY-MM-DD)", example="2026-05-07")
+    machines: list = Field(default=[], description="UI gösterimi için paket içindeki makineler listesi")
+
+class SyncSettingsUpdate(BaseModel):
+    api_key: str = Field(..., description="Magna API Key")
+    external_api_url: str = Field(..., description="Hedef URL Endpoint'i")
 
 # CSV'de karakter hataları olabileceği için kolon isimlerini direkt index mantığıyla mapliyoruz
 EXPECTED_COLUMNS = [
@@ -147,8 +177,9 @@ def validate_row(row):
     scrap = row.get("scrap_qty")
     
     if VALIDATION_SETTINGS["negative_prod"]:
-        if pd.isna(total_prod) or total_prod < 0:
-            errors.append({"field": "total_produced", "error_type": "Mantıksal Hata", "message": "Üretilen miktar negatif olamaz.", "reason": "Fiziksel olarak 0'dan az ürün üretilemez.", "action": "düzelt"})
+        # Magna API kuralı: Toplam üretim adedi 1 - 1.000.000 arası olmalıdır
+        if pd.isna(total_prod) or total_prod < 1:
+            errors.append({"field": "total_produced", "error_type": "Geçersiz Miktar", "message": "Üretilen miktar en az 1 olmalıdır.", "reason": "Hedef sistem (Magna API) 0 veya negatif üretim değerlerini kabul etmez.", "action": "düzelt"})
         if not pd.isna(scrap) and scrap < 0:
             errors.append({"field": "scrap_qty", "error_type": "Mantıksal Hata", "message": "Fire miktarı negatif olamaz.", "reason": "Hatalı ürün adedi eksi değer alamaz.", "action": "düzelt"})
         
@@ -236,7 +267,7 @@ def send_to_api_with_backoff(payload, headers, max_retries=3):
             delay *= 2
     return resp
 
-@app.post("/api/v1/upload-csv")
+@app.post("/api/v1/upload-csv", tags=["1. Veri İçe Aktarma ve Ayarlar"], summary="CSV Üretim Raporu Yükle", description="MES sisteminden alınan .csv formatındaki üretim raporunu yükler, okur ve kalite testinden geçirerek veritabanına kaydeder.")
 async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Lütfen sadece .csv formatında dosya yükleyin.")
@@ -308,11 +339,11 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
     return {"message": "CSV yükleme tamamlandı", "summary": stats}
 
-@app.get("/api/v1/validation-settings")
+@app.get("/api/v1/validation-settings", tags=["1. Veri İçe Aktarma ve Ayarlar"], summary="Validasyon Kurallarını Getir", description="Sistemin verileri denetlerken kullandığı aktif/pasif kalite kurallarını listeler.")
 async def get_validation_settings():
     return VALIDATION_SETTINGS
 
-@app.put("/api/v1/validation-settings")
+@app.put("/api/v1/validation-settings", tags=["1. Veri İçe Aktarma ve Ayarlar"], summary="Validasyon Kurallarını Güncelle", description="Kullanıcının arayüzden seçtiği kalite kurallarını sisteme kaydeder.")
 async def update_validation_settings(settings: dict):
     global VALIDATION_SETTINGS
     for k, v in settings.items():
@@ -320,7 +351,7 @@ async def update_validation_settings(settings: dict):
             VALIDATION_SETTINGS[k] = v
     return VALIDATION_SETTINGS
 
-@app.post("/api/v1/revalidate")
+@app.post("/api/v1/revalidate", tags=["2. Veri Doğrulama (Validation)"], summary="Tüm Kayıtları Yeniden Doğrula", description="Mevcut tüm üretim kayıtlarını, güncellenmiş kalite kurallarına göre baştan test eder.")
 async def revalidate_all(db: Session = Depends(get_db)):
     """Tüm kayıtları güncel doğrulama ayarlarına göre baştan kontrol eder."""
     records = db.query(models.ProductionRecord).all()
@@ -335,7 +366,7 @@ async def revalidate_all(db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Tüm kayıtlar yeniden doğrulandı."}
 
-@app.get("/api/v1/records")
+@app.get("/api/v1/records", tags=["2. Veri Doğrulama (Validation)"], summary="Kayıtları Filtrele ve Listele", description="Veritabanındaki kayıtları durumlarına (geçerli, hatalı, uyarı) göre filtreleyip listeler.")
 async def get_records(is_valid: bool = None, record_status: str = None, db: Session = Depends(get_db)):
     """
     Veritabanındaki kayıtları getirir. is_valid veya record_status parametresi ile filtrelenebilir.
@@ -347,7 +378,7 @@ async def get_records(is_valid: bool = None, record_status: str = None, db: Sess
         query = query.filter(models.ProductionRecord.record_status == record_status)
     return query.limit(5000).all() # Frontend'de rahat filtreleme için limiti artırdık
 
-@app.delete("/api/v1/records")
+@app.delete("/api/v1/records", tags=["1. Veri İçe Aktarma ve Ayarlar"], summary="Tüm Veritabanını Temizle", description="Test amaçlı veya yeni dosya yüklemesi öncesinde tüm CSV kayıtlarını veritabanından kalıcı olarak siler.")
 async def clear_records(db: Session = Depends(get_db)):
     """
     Veritabanındaki tüm kayıtları siler (UI'dan dosya kaldırıldığında temizlik için).
@@ -356,7 +387,7 @@ async def clear_records(db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Tüm kayıtlar başarıyla silindi."}
 
-@app.put("/api/v1/records/{record_id}")
+@app.put("/api/v1/records/{record_id}", tags=["2. Veri Doğrulama (Validation)"], summary="Kayıt Güncelle (Düzeltme Yap)", description="Hatalı bir üretim kaydını kullanıcının girdiği yeni verilerle günceller, değişikliği geçmişe yazar (Audit Trail) ve tekrar doğrular.")
 async def update_record(record_id: int, update_data: RecordUpdate, db: Session = Depends(get_db)):
     record = db.query(models.ProductionRecord).filter(models.ProductionRecord.record_id == record_id).first()
     if not record:
@@ -415,7 +446,7 @@ async def update_record(record_id: int, update_data: RecordUpdate, db: Session =
         "audit_trail": json.loads(record.audit_trail) if record.audit_trail else []
     }
 
-@app.delete("/api/v1/records/{record_id}")
+@app.delete("/api/v1/records/{record_id}", tags=["2. Veri Doğrulama (Validation)"], summary="Tekil Kayıt Sil (Reddet)", description="Kalite standartlarına uymayan ve düzeltilemeyecek durumdaki şüpheli bir kaydı tamamen çöpe atar.")
 async def delete_single_record(record_id: int, db: Session = Depends(get_db)):
     record = db.query(models.ProductionRecord).filter(models.ProductionRecord.record_id == record_id).first()
     if not record:
@@ -425,7 +456,7 @@ async def delete_single_record(record_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Kayıt silindi"}
 
-@app.get("/api/v1/stats")
+@app.get("/api/v1/stats", tags=["3. Raporlar ve Gösterge Paneli"], summary="Genel İstatistikleri Getir", description="Veritabanındaki kayıtların geçerli, uyarı ve hata durumlarına göre dağılım istatistiklerini döner.")
 async def get_stats(db: Session = Depends(get_db)):
     """Veritabanındaki güncel kayıt istatistiklerini döner."""
     total = db.query(models.ProductionRecord).count()
@@ -440,7 +471,7 @@ async def get_stats(db: Session = Depends(get_db)):
         
     return {"total": total, "valid": valid, "warning": warning, "error": error}
 
-@app.get("/api/v1/dashboard-data")
+@app.get("/api/v1/dashboard-data", tags=["3. Raporlar ve Gösterge Paneli"], summary="Dashboard Analitiklerini Getir", description="OEE trendleri, duruş nedenleri, fire analizleri ve KPI kartları için gereken tüm gelişmiş ve birleştirilmiş grafikleri üretir.")
 async def get_dashboard_data(
     start_date: str = Query(None), 
     end_date: str = Query(None), 
@@ -626,18 +657,19 @@ async def get_dashboard_data(
 
 # --- HEDEF SİSTEM SENKRONİZASYON (REST API) İŞLEMLERİ ---
 
-@app.post("/api/v1/sync/manual")
+@app.post("/api/v1/sync/manual", tags=["4. Hedef Sistem Senkronizasyonu"], summary="Tekil Vardiyayı Manuel Gönder", description="Kullanıcının matris üzerinden seçtiği spesifik bir tarih-vardiya paketini Magna API'sine anında gönderir ve Fallback uygular.")
 def manual_sync(payload: SyncPayload, db: Session = Depends(get_db)):
     """Kullanıcının tek bir vardiya hücresini (Manuel) anında göndermesini sağlar."""
     headers = {"X-Production-Key": API_KEY, "Content-Type": "application/json"}
-    data = payload.dict()
+    data_to_send = payload.dict(exclude={"machines"}) # Dış API'nin hata vermemesi için machines gizleniyor
+    full_data = payload.dict() # Ancak veri tabanında göstermek için tutuluyor
     try:
-        resp = send_to_api_with_backoff(data, headers=headers)
+        resp = send_to_api_with_backoff(data_to_send, headers=headers)
         is_success = resp.status_code == 200
         log = SyncLog(
-            production_date=data["production_date"],
-            shift=data["shift"],
-            payload=json.dumps(data),
+            production_date=full_data["production_date"],
+            shift=full_data["shift"],
+            payload=json.dumps(full_data),
             status_code=resp.status_code,
             response_data=resp.text,
             is_success=is_success
@@ -647,9 +679,9 @@ def manual_sync(payload: SyncPayload, db: Session = Depends(get_db)):
         return {"success": is_success, "status_code": resp.status_code, "message": resp.text}
     except Exception as e:
         log = SyncLog(
-            production_date=data["production_date"],
-            shift=data["shift"],
-            payload=json.dumps(data),
+            production_date=full_data["production_date"],
+            shift=full_data["shift"],
+            payload=json.dumps(full_data),
             status_code=0,
             response_data=str(e),
             is_success=False
@@ -687,12 +719,13 @@ def run_sync_task_batch(groups_to_sync: list):
             if not SYNC_STATE["is_syncing"]: break
             
             try:
-                resp = send_to_api_with_backoff(batch, headers=headers)
+                clean_batch = [{k: v for k, v in item.items() if k != "machines"} for item in batch]
+                resp = send_to_api_with_backoff(clean_batch, headers=headers)
                 
                 # EĞER HEDEF SİSTEM BATCH (DİZİ) KABUL ETMEYİP 422 DÖNERSE -> SINGLE OBJECT FALLBACK (Çok güçlü koruma)
                 if resp.status_code == 422:
-                    for item in batch:
-                        resp_single = send_to_api_with_backoff(item, headers=headers)
+                    for item, clean_item in zip(batch, clean_batch):
+                        resp_single = send_to_api_with_backoff(clean_item, headers=headers)
                         is_success = resp_single.status_code == 200
                         log = SyncLog(production_date=item["production_date"], shift=item["shift"], payload=json.dumps(item), status_code=resp_single.status_code, response_data=resp_single.text, is_success=is_success)
                         db.add(log)
@@ -726,8 +759,9 @@ def run_sync_task_batch(groups_to_sync: list):
         SYNC_STATE["is_syncing"] = False
         db.close()
 
-@app.get("/api/v1/sync/preview")
+@app.get("/api/v1/sync/preview", tags=["4. Hedef Sistem Senkronizasyonu"], summary="Senkronizasyon Önizlemesini (Matris) Getir", description="Temiz kayıtları Tarih ve Vardiya bazında gruplayarak, gönderime hazır veya daha önce başarısız olmuş paketlerin listesini döner.")
 def get_sync_preview(db: Session = Depends(get_db)):
+    total_records = db.query(models.ProductionRecord).count()
     valid_records = db.query(models.ProductionRecord).filter(models.ProductionRecord.is_valid == True).all()
     
     # 1. Kayıtları Gün ve Vardiyaya göre grupla
@@ -744,29 +778,32 @@ def get_sync_preview(db: Session = Depends(get_db)):
     synced_keys = set((log.production_date, log.shift) for log in success_logs)
     
     to_sync = []
+    all_payloads = []
     raw_records_count = 0
     for (d, s), records in groups.items():
-        if (d, s) in synced_keys:
-            continue # Daha önce gönderildi, Duplicate oluşumunu engeller
-            
-        raw_records_count += len(records)
-        machine_count = len(set(r.workstation_name for r in records if r.workstation_name))
+        machine_list = list(set(r.workstation_name for r in records if r.workstation_name))
         total_prod = sum(r.total_produced for r in records if r.total_produced is not None)
         valid_oees = [r.oee for r in records if r.oee is not None]
         avg_oee = sum(valid_oees) / len(valid_oees) if valid_oees else 0.0
         
         # Hedef sistemin JSON yapısı
-        to_sync.append({
-            "machine_count": machine_count,
+        payload = {
+            "machine_count": len(machine_list),
             "total_production_units": total_prod,
             "oe_value": round(avg_oee, 2),
             "shift": s,
-            "production_date": d
-        })
+            "production_date": d,
+            "machines": machine_list
+        }
+        all_payloads.append(payload)
         
-    return {"pending_count": len(to_sync), "pending_payloads": to_sync, "pending_raw_records": raw_records_count}
+        if (d, s) not in synced_keys:
+            to_sync.append(payload)
+            raw_records_count += len(records)
+        
+    return {"pending_count": len(to_sync), "pending_payloads": to_sync, "pending_raw_records": raw_records_count, "total_records": total_records, "all_payloads": all_payloads}
 
-@app.post("/api/v1/sync/start")
+@app.post("/api/v1/sync/start", tags=["4. Hedef Sistem Senkronizasyonu"], summary="Toplu Arkaplan Senkronizasyonunu Başlat", description="Kuyrukta bekleyen tüm paketleri arka planda (Background Task) asenkron olarak hedef API'ye aktarmaya başlar.")
 def start_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     global SYNC_STATE
     if SYNC_STATE["is_syncing"]:
@@ -782,11 +819,11 @@ def start_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db))
     background_tasks.add_task(run_sync_task_batch, to_sync)
     return {"message": f"{len(to_sync)} vardiya özeti gönderim kuyruğuna alındı."}
 
-@app.get("/api/v1/sync/status")
+@app.get("/api/v1/sync/status", tags=["4. Hedef Sistem Senkronizasyonu"], summary="Arkaplan İşlem Durumunu Sorgula", description="Şu an devam eden arkaplan senkronizasyonunun ilerleme (progress) yüzdesini ve başarı/hata durumunu döner.")
 def sync_status():
     return SYNC_STATE
 
-@app.get("/api/v1/sync/logs")
+@app.get("/api/v1/sync/logs", tags=["4. Hedef Sistem Senkronizasyonu"], summary="API Gönderim Geçmişini (Logları) Getir", description="Hedef sistemle kurulan tüm başarılı/başarısız ağ iletişimlerini, dönen HTTP cevaplarını ve durum detaylarını listeler.")
 def sync_logs(db: Session = Depends(get_db)):
     # Arayüzdeki tabloya basmak için geçmiş işlemleri getir
     logs = db.query(SyncLog).order_by(SyncLog.timestamp.desc()).limit(150).all()
@@ -807,7 +844,36 @@ def sync_logs(db: Session = Depends(get_db)):
             "status_code": log.status_code,
             "is_success": log.is_success,
             "response_data": log.response_data,
-            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            "timestamp": log.timestamp.isoformat() + "Z" if log.timestamp else None,
             "payload": parsed_payload
         })
     return result
+
+@app.delete("/api/v1/sync/logs", tags=["4. Hedef Sistem Senkronizasyonu"], summary="API Loglarını Temizle", description="Geçmiş tüm API gönderim loglarını (SyncLog) veritabanından siler.")
+def clear_sync_logs(db: Session = Depends(get_db)):
+    """Test ve sıfırlama amaçlı olarak tüm gönderim geçmişini temizler."""
+    db.query(SyncLog).delete()
+    db.commit()
+    return {"message": "Tüm loglar temizlendi."}
+
+@app.get("/api/v1/sync/settings", tags=["4. Hedef Sistem Senkronizasyonu"], summary="API Senkronizasyon Ayarlarını Getir", description="Hedef API adresi ve API Key bilgilerini döner.")
+def get_sync_settings():
+    return {
+        "api_key": API_KEY,
+        "external_api_url": EXTERNAL_API_URL
+    }
+
+@app.put("/api/v1/sync/settings", tags=["4. Hedef Sistem Senkronizasyonu"], summary="API Senkronizasyon Ayarlarını Güncelle", description="Hedef API adresi ve API Key bilgilerini günceller ve .env dosyasına kaydeder.")
+def update_sync_settings(settings: SyncSettingsUpdate):
+    global API_KEY, EXTERNAL_API_URL
+    API_KEY = settings.api_key
+    EXTERNAL_API_URL = settings.external_api_url
+    
+    try:
+        import dotenv
+        dotenv.set_key(env_path, "API_KEY", API_KEY)
+        dotenv.set_key(env_path, "EXTERNAL_API_URL", EXTERNAL_API_URL)
+    except Exception:
+        pass # dotenv dosyası yoksa bellekte tutar
+        
+    return {"message": "API Ayarları başarıyla güncellendi.", "api_key": API_KEY, "external_api_url": EXTERNAL_API_URL}

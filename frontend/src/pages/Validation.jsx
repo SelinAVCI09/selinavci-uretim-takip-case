@@ -67,6 +67,7 @@ export default function Validation() {
     try {
       await axios.put('http://localhost:8000/api/v1/validation-settings', validationSettings);
       setIsSettingsOpen(false);
+      await handleRevalidate(); // Yeni kuralları anında uygula ve tabloyu güncelle
     } catch (error) {
       console.error('Ayarlar kaydedilemedi', error);
       alert('Ayarlar kaydedilemedi.');
@@ -91,7 +92,7 @@ export default function Validation() {
     format_wo: { label: "İş Emri Formatı", desc: "Standart format (302 ile başlar, 10 hane)." },
     invalid_shift: { label: "Vardiya Kontrolü", desc: "Vardiya 1, 2 veya 3 olmalıdır." },
     missing_ws: { label: "Eksik İş İstasyonu", desc: "İş İstasyonu alanı zorunludur." },
-    negative_prod: { label: "Negatif Miktar", desc: "Üretim ve fire negatif olamaz." },
+    negative_prod: { label: "Geçersiz Üretim Miktarı", desc: "Üretim en az 1 olmalı, fire negatif olamaz." },
     scrap_gt_prod: { label: "Fire > Toplam Üretim", desc: "Fire miktarı üretimden büyük olamaz." },
     out_of_range_pct: { label: "Yüzdelik Aralık", desc: "A, P, Q ve OEE 0-100 arasında olmalıdır." },
     capacity_exceed: { label: "Kapasite Aşımı (Uyarı)", desc: "Performans %100'ü aşarsa uyar." },
@@ -330,7 +331,7 @@ export default function Validation() {
                               <div className="mt-2 space-y-1 bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded text-[10px]">
                                 {parseAuditTrail(record.audit_trail).map((log, idx) => (
                                   <div key={idx} className="border-b border-indigo-100 dark:border-indigo-800/30 pb-1 last:border-0 last:pb-0">
-                                    <span className="text-slate-500 block mb-0.5">{log?.timestamp ? new Date(log.timestamp).toLocaleString() : 'Bilinmeyen Tarih'}</span>
+                                    <span className="text-slate-500 block mb-0.5">{log?.timestamp ? new Date(log.timestamp).toLocaleString('tr-TR') : 'Bilinmeyen Tarih'}</span>
                                     {Array.isArray(log?.changes) && log.changes.map((c, i) => (
                                       <div key={i} className="text-indigo-700 dark:text-indigo-300">
                                         <span className="font-semibold">{c?.field}:</span> {String(c?.old ?? 'N/A')} &rarr; {String(c?.new ?? 'N/A')}
