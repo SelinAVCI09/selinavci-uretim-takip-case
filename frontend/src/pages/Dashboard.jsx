@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle, Printer, Maximize2, X, Search } from 'lucide-react';
+import { Activity, Package, Trash2, Clock, AlertTriangle, Calendar, Filter, Zap, CheckCircle, Printer, Maximize2, X, Search, Download } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area
@@ -15,6 +17,7 @@ export default function Dashboard() {
   const [trendOffset, setTrendOffset] = useState(0);
   const [expandedChart, setExpandedChart] = useState(null);
   const [anomalyFilter, setAnomalyFilter] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -81,6 +84,57 @@ export default function Dashboard() {
   };
   const handleNextTrend = () => {
     if (trendOffset > 0) setTrendOffset(prev => prev - 1);
+  };
+
+  // Ekranda kayma (shift) olmadan kusursuz PDF render eden fonksiyon
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('dashboard-content');
+    if (!element) return;
+
+    setIsExporting(true);
+    const originalWidth = element.style.width;
+    
+    try {
+      // Recharts ve CSS grid'in pdf'te kaymasını engellemek için genişliği masaüstü boyutuna sabitliyoruz
+      element.style.width = '1200px';
+      // Grafiklerin yeniden boyutlanma (resize) animasyonunu tamamlaması için kısa bir süre bekle
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const canvas = await html2canvas(element, { 
+        scale: 2, 
+        useCORS: true, 
+        backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' 
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // İlk sayfayı ekle
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Eğer grafikler aşağı taşıyorsa çoklu sayfa olarak ekle
+      while (heightLeft > 0) {
+        position = position - pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Uretim_Dashboard_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error("PDF oluşturma hatası:", err);
+      alert("PDF oluşturulurken bir hata meydana geldi.");
+    } finally {
+      element.style.width = originalWidth;
+      setIsExporting(false);
+    }
   };
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -276,7 +330,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+    <div id="dashboard-content" className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* BAŞLIK & FİLTRELER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm print:hidden">
         <div>
@@ -298,10 +352,16 @@ export default function Dashboard() {
               <option value="">Tüm İstasyonlar</option>
               {availableWorkstations.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
-          <button onClick={() => window.print()} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 transition-colors shadow-sm ml-2" title="Dashboard'u PDF olarak indirin">
-            <Printer size={16} className="mr-2" />
-            <span className="text-sm font-medium">PDF İndir / Yazdır</span>
-          </button>
+          </div>
+          <div className="flex items-center gap-2 ml-2" data-html2canvas-ignore="true">
+            <button onClick={() => window.print()} className="flex items-center bg-slate-600 hover:bg-slate-700 text-white rounded-lg px-4 py-2 transition-colors shadow-sm hidden md:flex" title="Tarayıcı Yazdırma Menüsü">
+              <Printer size={16} className="mr-2" />
+              <span className="text-sm font-medium">Yazdır</span>
+            </button>
+            <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 transition-colors shadow-sm disabled:opacity-50" title="Dashboard'u PDF olarak indirin">
+              <Download size={16} className={`mr-2 ${isExporting ? 'animate-bounce' : ''}`} />
+              <span className="text-sm font-medium">{isExporting ? 'Hazırlanıyor...' : 'PDF İndir'}</span>
+            </button>
           </div>
         </div>
       </div>

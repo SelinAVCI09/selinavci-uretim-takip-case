@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from main import validate_row
+from services.validation_service import validate_row
 
 def test_missing_work_order():
     """İş emri boş olduğunda 'Reddet' hatası fırlatmalı"""

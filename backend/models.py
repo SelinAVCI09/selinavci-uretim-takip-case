@@ -1,4 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Date, Boolean, Text
+from sqlalchemy import DateTime
+from datetime import datetime
 from database import Base
 
 class ProductionRecord(Base):
@@ -29,3 +31,14 @@ class ProductionRecord(Base):
     record_status = Column(String, default="valid", index=True) # "valid", "warning", "error"
     validation_errors = Column(Text, nullable=True)  # Hataları JSON string olarak tutacağız
     audit_trail = Column(Text, nullable=True)  # Düzenleme geçmişi (JSON formatında)
+
+class SyncLog(Base):
+    __tablename__ = "sync_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    production_date = Column(String, index=True)
+    shift = Column(Integer)
+    payload = Column(Text)
+    status_code = Column(Integer)
+    response_data = Column(Text)
+    is_success = Column(Boolean, default=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
