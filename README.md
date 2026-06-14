@@ -82,10 +82,10 @@ Geniş veri setleri içerisinde anında sorgulama yapabilmenizi sağlayan geliş
 
 ### 4. Veri Validasyonu, Dinamik Kalite Raporu ve Audit Trail
 Sistemin kalbini oluşturan, kirli verileri tespit edip onarılmasını sağlayan yönetim paneli:
-* **Kalite Kontrol ve Hata Yönetimi:** <br> ![Validasyon Ekranı](docs/validation1.png) <br> Yüklenen veriler 14 farklı kurala göre test edilir ve ekranda raporlanır. Bu ekranda hata tipine veya İş Emri numarasına göre filtreleme yapılıp **tüm rapor CSV olarak indirilebilir.**
-  * **Kesin Hatalı (Reddedilenler):** Mantıksal olarak imkansız olan (Örn: *İş İstasyonunun boş olması veya Tarihin gelecek olması*) verilerdir. Hedef API'ye **asla gönderilmez**.
-  * **Düzeltilmesi Gerekenler (Fix):** Formata veya kurala uymayan ancak operatörün anlık müdahalesi ile onarılabilecek verilerdir (Arayüzde "Düzelt" dendiğinde A, P, Q değerleri değiştiği an **OEE otomatik hesaplanır**).
-  * **Uyarı (Şüpheli):** Teorik kapasite aşımı (OEE > %100) gibi fiziksel olarak mümkün ama şüpheli durumlardır. Validasyondan geçebilir ancak arayüzde turuncu renkli bir bayrakla işaretlenir.
+* **Aksiyon Bazlı Kalite Kontrol (Reddet vs Düzelt):** <br> ![Validasyon Ekranı](docs/validation1.png) <br> Yüklenen veriler 17 farklı kurala göre test edilir. Projede jenerik bir "Hata (Error)" sınıflandırması yerine, Case Study isterlerine tam sadık kalınarak **Hatalar iki alt aksiyona (Reddet ve Düzelt)** bölünmüştür:
+  * **❌ Kesin Hatalı (Reddedilenler):** İzlenebilirliği tamamen kırık veya kurtarılamayacak durumda olan eksik verilerdir (Örn: *İş İstasyonunun boş olması*). Sistem operatöre doğrudan bunu çöpe atmayı önerir. Hedef API'ye **asla gönderilmez**.
+  * **✏️ Kesin Hatalı (Düzeltilmesi Gerekenler):** Formata veya kurala uymayan, matematiksel olarak yanlış hesaplanmış ancak operatörün anlık müdahalesi ile onarılabilecek (kurtarılabilir) verilerdir. Arayüzde "Düzelt" dendiğinde A, P, Q değerleri değiştiği an **OEE otomatik hesaplanır**.
+  * **⚠️ Uyarı (Şüpheli):** Teorik kapasite aşımı (OEE > %100) gibi fiziksel olarak mümkün ama şüpheli durumlardır. Geçerli kabul edilebilir ancak arayüzde turuncu renkli bir bayrakla işaretlenir.
 * **Dinamik Validasyon Ayarları:** <br> ![Validasyon Ayarları](docs/validation2.png) <br> Sistemin kalite denetimi yaparken hangi kuralları dikkate alıp hangilerini görmezden geleceğini (Örn: *Negatif üretime izin ver/verme*) UI üzerinden anlık olarak yönetmenizi sağlar. Ayarlar kaydedildiğinde sistem tüm kayıtları yeniden test eder.
 
 ### 5. Hedef API Senkronizasyonu ve Log Kayıtları
@@ -115,8 +115,8 @@ Aşağıdaki 17 kural, uygulamanın sol menüsündeki **"Validasyon Ayarları" (
 | **2. İş Emri Formatı** | SAP/ERP sistemleri iş emirlerini belirli standartlarda (Örn: 302 ile başlayan 10 hane) kabul eder. | `✏️ DÜZELT` |
 | **3. Vardiya Kontrolü** | Üretim tesisi 3 vardiya (1,2,3) çalışmaktadır. Vardiya 4 gibi bir değer imkansızdır. | `✏️ DÜZELT` |
 | **4. İş İstasyonu ve Ürün** | OEE tamamen "Makine" bazlı bir metriktir. Makine ve üretilen stok bilgisi olmayan bir kayıt geçersizdir. | `❌ REDDET` |
-| **5. Boş Metrik Verileri** | OEE, Çalışma Süresi ve Üretim Miktarı hesaplamaların omurgasıdır; veri eksikse kabul edilmez. | `❌ REDDET` |
-| **6. Tarih Doğrulaması** | Gerçekleşmiş üretim raporuna "Gelecek bir tarih" girilmiş olması bariz bir kopyalama/manuel giriş hatasıdır. | `❌ REDDET` |
+| **5. Boş Metrik Verileri** | Sensör veya operatör kaynaklı anlık veri kaybı olabilir. Mühendis saha loglarından kontrol edip tamamlayabilir. | `✏️ DÜZELT` |
+| **6. Tarih Doğrulaması** | Gelecek bir tarih veya hatalı yıl girilmesi (Örn: 2026) kopyalama/insan hatasıdır. Mühendis ait olduğu günü bilerek onarabilir. | `✏️ DÜZELT` |
 
 ### 🏭 Fiziksel İmkansızlık & Matematiksel Tutarsızlıklar
 | Kural / Metrik | Neden Önemli? (Domain Mantığı) | Varsayılan Aksiyon |
@@ -125,7 +125,7 @@ Aşağıdaki 17 kural, uygulamanın sol menüsündeki **"Validasyon Ayarları" (
 | **8. Fire > Toplam Üretim** | Mantıksal olarak hatalı üretilen (Scrap) parça sayısı, üretilen toplam parçadan fazla olamaz. | `✏️ DÜZELT` |
 | **9. Süresiz Üretim** | Çalışma Süresi (Work Time) = 0 iken 500 parça üretim girilmesi fiziksel bir imkansızlıktır. | `✏️ DÜZELT` |
 | **10. Uzun Çalışma & Sıfır Ürün**| Makinenin 1 saatten uzun süre açık kalıp (Work Time > 60) hiç ürün vermemesi anomali (boşta çalışma) belirtisidir. | `⚠️ UYAR` |
-| **11. Duruş Süresi Kırılımı** | Toplam Duruş süresi, alt bileşenleri olan Planlı Duruş + Plansız Duruş sürelerinin tam toplamına eşit olmak zorundadır. | `✏️ DÜZELT` |
+| **11. Duruş Süresi Kırılımı** | Toplam Duruş doğru girilmiş ancak Planlı/Plansız kırılımı eksik yapılmış olabilir. OEE'yi doğrudan bozmadığı için uyarı verilir. | `⚠️ UYAR` |
 | **12. Duruş > Çalışma Süresi** | Bir vardiyada kaydedilen duruş süresi, toplam çalışma süresini aşamaz. | `✏️ DÜZELT` |
 
 ### 📊 OEE & Kapasite Sağlaması
@@ -135,6 +135,13 @@ Aşağıdaki 17 kural, uygulamanın sol menüsündeki **"Validasyon Ayarları" (
 | **14. OEE Çapraz Kontrolü** | Raporda gelen OEE değeri, kendi A, P, Q değerlerinin çarpımıyla (`A * P * Q`) doğrulanmalıdır. Formül kaymaları burada yakalanır. | `✏️ DÜZELT` |
 | **15. Kullanılabilirlik (A) Hatası**| Makine "Duruş (Downtime)" yapmasına rağmen Kullanılabilirlik oranının %100 girilmesi matematiksel olarak yanlıştır. | `✏️ DÜZELT` |
 | **16. Kapasite Aşımı (P > 100)** | Performans %105 ise makine teorik (katalog) hızından daha hızlı çalıştırılmış veya hedef süreler yanlış hesaplanmıştır. | `⚠️ UYAR` |
+
+### 🧠 Mimari Tasarım Kararı: Neden Sadece "Hata" Demek Yerine "Reddet" ve "Düzelt" Olarak İkiye Ayırdık?
+Case Study'de explicitly (açıkça) belirtilen *"Önerilen aksiyon: reddet / uyar / düzelt"* maddesine istinaden, sistemde jenerik bir "Error/Warning" mantığı kurulmamıştır. Hatalar (Errors) işlem bazlı (action-oriented) olarak ikiye ayrılmıştır:
+1. **Reddet (Reject):** Veride izlenebilirlik tamamen kırıksa (Örn: Hangi makinede üretildiği belli değilse) operatörün bunu tahmin etme şansı yoktur, bu yüzden "Reddet" aksiyonu atanır.
+2. **Düzelt (Fix):** Mantıksal hatalar (Örn: Firenin üretimden büyük olması) "Kesin Hata"dır ancak operatör Excel/MES kayıtlarına dönüp doğru veriyi bulabilir. Sistem bu veriyi silmez, operatöre UI üzerinden "Düzelt" aksiyonu sunarak kurtarma şansı tanır.
+
+*Not: Üstelik "Validasyon Ayarları" modülü sayesinde hangi hatanın Reddedilip hangisinin Düzeltileceğine kod içinde hardcoded karar verilmemiş, bu kontrol tamamen son kullanıcıya bırakılmıştır.*
 
 ### 🧠 Mimari Tasarım Kararı: Hatalı Kayıtlar İçe Aktarılmalı mı (Import), Yoksa Reddedilmeli mi?
 Case study'de belirtilen *"Verideki kayıtların hepsini import etmem mi gerekiyor, yoksa sorunluları reddedebilir miyim?"* sorusuna karşılık bu projede **"Tüm kayıtları (şüpheliler dahil) içeri al, ancak hedef API'ye aktarımını kesinlikle bloke et (Zero-Trust)"** yaklaşımı benimsenmiştir.

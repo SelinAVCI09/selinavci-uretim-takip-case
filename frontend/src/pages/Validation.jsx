@@ -88,7 +88,8 @@ export default function Validation() {
       String(r?.record_id || '').includes(search);
       
     let matchStatus = true;
-    if (filters.status === 'error') matchStatus = r?.record_status === 'error';
+    if (filters.status === 'valid') matchStatus = r?.is_valid === true;
+    else if (filters.status === 'error') matchStatus = r?.record_status === 'error';
     else if (filters.status === 'warning') matchStatus = r?.record_status === 'warning';
     else if (filters.status === 'fix') matchStatus = parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt');
     else if (filters.status === 'reject') matchStatus = parseErrors(r?.validation_errors).some(e => e?.action === 'reddet');
@@ -140,7 +141,13 @@ export default function Validation() {
       const response = await axios.put(`http://localhost:8000/api/v1/records/${recordId}`, updateData);
       
       if (response.data.is_valid) {
-        setRecords(safeRecords.filter(r => r.record_id !== recordId));
+        setRecords(safeRecords.map(r => r.record_id === recordId ? { 
+          ...editFormData, 
+          is_valid: true,
+          validation_errors: null,
+          audit_trail: JSON.stringify(response.data.audit_trail),
+          record_status: 'valid'
+        } : r));
       } else {
         setRecords(safeRecords.map(r => r.record_id === recordId ? { 
           ...editFormData, 
@@ -174,6 +181,7 @@ export default function Validation() {
 
   // Dropdown (Select) İçin Genel Adetler (Tüm safeRecords üzerinden)
   const totalCountOverall = safeRecords.length;
+  const validCountOverall = safeRecords.filter(r => r?.is_valid).length;
   const errorCountOverall = safeRecords.filter(r => r?.record_status === 'error').length;
   const warningCountOverall = safeRecords.filter(r => r?.record_status === 'warning').length;
   const fixCountOverall = safeRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt')).length;
@@ -263,6 +271,7 @@ export default function Validation() {
           <div className="flex gap-2">
             <select value={filters.status} onChange={e => setFilters({...filters, status: e.target.value, errorType: ''})} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none">
               <option value="">Tüm Durumlar ({totalCountOverall})</option>
+              {validCountOverall > 0 && <option value="valid">✅ Geçerli (Düzenlenenler) ({validCountOverall})</option>}
               <option value="error">❌ Kesin Hatalı ({errorCountOverall})</option>
               <option value="warning">⚠️ Sadece Uyarı ({warningCountOverall})</option>
               <option value="fix">✏️ Düzeltilmesi Gerekenler ({fixCountOverall})</option>
@@ -309,8 +318,10 @@ export default function Validation() {
                           <span>#{record.record_id}</span>
                           {record.record_status === 'error' ? (
                             <span className="px-2 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Kesin Hatalı</span>
-                          ) : (
+                          ) : record.record_status === 'warning' ? (
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Uyarı</span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Geçerli</span>
                           )}
                         </div>
                       </td>
@@ -346,6 +357,11 @@ export default function Validation() {
                         )}
                       </td>
                       <td className="px-6 py-4">
+                        {record.is_valid ? (
+                          <div className="flex items-center text-green-600 dark:text-green-400 font-medium text-sm">
+                            <CheckCircle size={16} className="mr-2" /> Tüm hatalar giderildi.
+                          </div>
+                        ) : (
                         <div className="space-y-2">
                           {parseErrors(record.validation_errors).map((err, i) => {
                             const isComplex = typeof err === 'object' && err !== null;
@@ -375,15 +391,18 @@ export default function Validation() {
                             );
                           })}
                         </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-2 items-center justify-center">
                           <button onClick={() => handleEditClick(record)} className="flex items-center justify-center w-full px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-md transition-colors text-xs font-medium border border-blue-200 dark:border-blue-800">
                             <Edit2 size={14} className="mr-1.5" /> Düzelt
                           </button>
+                          {!record.is_valid && (
                           <button onClick={() => handleReject(record.record_id)} className="flex items-center justify-center w-full px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-md transition-colors text-xs font-medium border border-red-200 dark:border-red-800">
                             <Trash2 size={14} className="mr-1.5" /> Reddet
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
