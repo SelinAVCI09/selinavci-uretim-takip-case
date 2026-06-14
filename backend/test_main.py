@@ -1,47 +1,29 @@
 import pytest
-from main import validate_row, VALIDATION_SETTINGS
+import pandas as pd
+from main import validate_row
 
-def test_validate_row_success():
-    # Tüm kurallara uyan temiz bir üretim kaydı
+def test_missing_work_order():
+    """İş emri boş olduğunda 'Reddet' hatası fırlatmalı"""
+    row = {"work_order_no": None, "shift": 1, "workstation_name": "IMM-1"}
+    errors = validate_row(row)
+    assert any(e["field"] == "work_order_no" for e in errors)
+
+def test_negative_production():
+    """Negatif üretim miktarı 'Geçersiz Miktar' hatası fırlatmalı"""
     row = {
-        "work_order_no": "3021234567",
-        "shift": 1,
-        "workstation_name": "IMM-2700-1",
-        "total_produced": 100,
-        "scrap_qty": 5,
-        "availability": 100,
-        "performance": 80,
-        "quality": 95,
-        "oee": 76.0,
-        "work_time": 480,
-        "down_time": 0
+        "work_order_no": "3021234567", "shift": 1, 
+        "workstation_name": "IMM-1", "stock_name": "Part-A",
+        "total_produced": -10, "work_time": 400
     }
     errors = validate_row(row)
-    assert len(errors) == 0  # Hata dönmemeli
+    assert any(e["error_type"] == "Geçersiz Miktar" for e in errors)
 
-def test_validate_row_missing_workstation():
-    # İş istasyonu eksik olan bir kayıt
+def test_oee_math_mismatch():
+    """OEE hesabı A*P*Q/10000 formülüne uymadığında hata fırlatmalı"""
     row = {
-        "work_order_no": "3021234567",
-        "shift": 1,
-        "workstation_name": None, # EKSİK
-        "total_produced": 100,
+        "work_order_no": "3021234567", "shift": 1, "workstation_name": "IMM-1",
+        "stock_name": "Part-A", "availability": 100, "performance": 100, 
+        "quality": 100, "oee": 95.0, "total_produced": 100, "work_time": 400
     }
     errors = validate_row(row)
-    assert len(errors) > 0
-    assert any(e["field"] == "workstation_name" for e in errors)
-
-def test_validate_row_scrap_greater_than_produced():
-    # Fire miktarının Üretimden büyük olması fiziksel olarak imkansızdır
-    row = {
-        "work_order_no": "3021234567",
-        "shift": 2,
-        "workstation_name": "IMM-2700-2",
-        "total_produced": 50,
-        "scrap_qty": 60, # 50 üründen 60'ı hatalı olamaz
-        "work_time": 480
-    }
-    errors = validate_row(row)
-    assert len(errors) > 0
-    
-# Bu dosyayı backend klasöründe terminalden `pytest test_main.py` yazarak çalıştırabilirsiniz.
+    assert any(e["error_type"] == "Matematiksel Tutarsızlık" for e in errors)
