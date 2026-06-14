@@ -179,27 +179,27 @@ def validate_row(row):
     # 1. Eksik / Boş / Format Veri Kontrolü (Zorunlu Alanlar)
     wo_no = str(row.get("work_order_no", ""))
     if is_active("missing_wo") and (pd.isna(row.get("work_order_no")) or not wo_no.strip() or wo_no.lower() == "nan"):
-        errors.append({"field": "work_order_no", "error_type": "Eksik Veri", "message": "İş Emri No boş bırakılamaz.", "reason": "İzlenebilirlik yapılamaz.", "action": get_action("missing_wo", "reddet")})
+        errors.append({"field": "work_order_no", "error_type": "Eksik İş Emri", "message": "İş Emri No boş bırakılamaz.", "reason": "İzlenebilirlik yapılamaz.", "action": get_action("missing_wo", "reddet")})
     elif is_active("format_wo") and not pd.isna(row.get("work_order_no")):
         wo_clean = wo_no.split('.')[0]
         if len(wo_clean) > 0 and (not wo_clean.startswith("302") or len(wo_clean) != 10):
-            errors.append({"field": "work_order_no", "error_type": "Format Hatası", "message": f"İş Emri No formatı hatalı: {wo_clean}", "reason": "İş emri '302' ile başlamalı ve 10 hane olmalıdır.", "action": get_action("format_wo", "düzelt")})
+            errors.append({"field": "work_order_no", "error_type": "İş Emri Formatı", "message": f"İş Emri No formatı hatalı: {wo_clean}", "reason": "İş emri '302' ile başlamalı ve 10 hane olmalıdır.", "action": get_action("format_wo", "düzelt")})
 
     shift = row.get("shift")
     if is_active("invalid_shift") and (pd.isna(shift) or shift not in [1, 2, 3]):
-        errors.append({"field": "shift", "error_type": "Kritik Değer Hatası", "message": f"Geçersiz Vardiya: {shift}", "reason": "Vardiya 1, 2 veya 3 olmalıdır.", "action": get_action("invalid_shift", "düzelt")})
+        errors.append({"field": "shift", "error_type": "Vardiya Kontrolü", "message": f"Geçersiz Vardiya: {shift}", "reason": "Vardiya 1, 2 veya 3 olmalıdır.", "action": get_action("invalid_shift", "düzelt")})
 
     if is_active("missing_ws") and (pd.isna(row.get("workstation_name")) or not str(row.get("workstation_name")).strip()):
-        errors.append({"field": "workstation_name", "error_type": "Eksik Veri", "message": "İş İstasyonu bilgisi eksik.", "reason": "Performans ölçümü istasyon bazlı yapıldığı için bu alan zorunludur.", "action": get_action("missing_ws", "reddet")})
+        errors.append({"field": "workstation_name", "error_type": "İş İstasyonu ve Ürün", "message": "İş İstasyonu bilgisi eksik.", "reason": "Performans ölçümü istasyon bazlı yapıldığı için bu alan zorunludur.", "action": get_action("missing_ws", "reddet")})
 
     if is_active("missing_product") and (pd.isna(row.get("stock_name")) or not str(row.get("stock_name")).strip()):
-        errors.append({"field": "stock_name", "error_type": "Eksik Veri", "message": "Stok Adı (Ürün) bilgisi eksik.", "reason": "Tüm alanların eksiksiz doldurulması zorunludur.", "action": get_action("missing_product", "reddet")})
+        errors.append({"field": "stock_name", "error_type": "İş İstasyonu ve Ürün", "message": "Stok Adı (Ürün) bilgisi eksik.", "reason": "Tüm alanların eksiksiz doldurulması zorunludur.", "action": get_action("missing_product", "reddet")})
 
     if is_active("missing_metrics"):
         metrics_to_check = [("availability", "Kullanılabilirlik (A)"), ("performance", "Performans (P)"), ("quality", "Kalite (Q)"), ("oee", "OEE"), ("work_time", "Çalışma Süresi"), ("down_time", "Toplam Duruş"), ("total_produced", "Toplam Üretim"), ("scrap_qty", "Fire")]
         for col_key, col_name in metrics_to_check:
             if pd.isna(row.get(col_key)):
-                errors.append({"field": col_key, "error_type": "Eksik Veri", "message": f"{col_name} verisi eksik.", "reason": "Tüm alanların eksiksiz doldurulması zorunludur.", "action": get_action("missing_metrics", "reddet")})
+                errors.append({"field": col_key, "error_type": "Boş Metrik Verileri", "message": f"{col_name} verisi eksik.", "reason": "Tüm alanların eksiksiz doldurulması zorunludur.", "action": get_action("missing_metrics", "düzelt")})
 
     # 2. Üretim Miktarı ve Fire İlişkisi
     total_prod = row.get("total_produced")
@@ -212,27 +212,27 @@ def validate_row(row):
             # EĞER "Uzun Çalışma & 0 Üretim" uyarısı devreye girecekse, bunu Kesin Hatalı ile ezmemek için atlıyoruz
             is_long_run_zero = is_active("zero_prod_long_run") and wt > 60 and (pd.isna(total_prod) or total_prod == 0)
             if not is_long_run_zero:
-                errors.append({"field": "total_produced", "error_type": "Geçersiz Miktar", "message": "Üretilen miktar en az 1 olmalıdır.", "reason": "Hedef sistem 0 veya negatif üretim değerlerini kabul etmez.", "action": get_action("negative_prod", "düzelt")})
+                errors.append({"field": "total_produced", "error_type": "Negatif Üretim / Fire", "message": "Üretilen miktar en az 1 olmalıdır.", "reason": "Hedef sistem 0 veya negatif üretim değerlerini kabul etmez.", "action": get_action("negative_prod", "düzelt")})
         if not pd.isna(scrap) and scrap < 0:
-            errors.append({"field": "scrap_qty", "error_type": "Mantıksal Hata", "message": "Fire miktarı negatif olamaz.", "reason": "Hatalı ürün adedi eksi değer alamaz.", "action": get_action("negative_prod", "düzelt")})
+            errors.append({"field": "scrap_qty", "error_type": "Negatif Üretim / Fire", "message": "Fire miktarı negatif olamaz.", "reason": "Hatalı ürün adedi eksi değer alamaz.", "action": get_action("negative_prod", "düzelt")})
         
     if is_active("scrap_gt_prod") and not pd.isna(total_prod) and not pd.isna(scrap) and total_prod >= 0 and scrap >= 0:
         if scrap > total_prod:
-            errors.append({"field": "scrap_qty, total_produced", "error_type": "Tutarsızlık", "message": "Fire miktarı, toplam üretimden büyük.", "reason": "Hatalı üretilen ürün sayısı, üretilen toplam parçadan fazla olamaz.", "action": get_action("scrap_gt_prod", "düzelt")})
+            errors.append({"field": "scrap_qty, total_produced", "error_type": "Fire > Toplam Üretim", "message": "Fire miktarı, toplam üretimden büyük.", "reason": "Hatalı üretilen ürün sayısı, üretilen toplam parçadan fazla olamaz.", "action": get_action("scrap_gt_prod", "düzelt")})
 
     # 3. Yüzde Aralık Kontrolleri (0 - 100)
     if is_active("out_of_range_pct"):
         for col_key, col_name in [("availability", "Kullanılabilirlik (A)"), ("quality", "Kalite (Q)"), ("oee", "OEE")]:
             val = row.get(col_key)
             if not pd.isna(val) and (val < 0 or val > 100):
-                errors.append({"field": col_key, "error_type": "Aralık Hatası", "message": f"{col_name} değeri %0-100 dışında ({val}).", "reason": "Yüzdelik metrikler 0 ile 100 arasında olmalıdır.", "action": get_action("out_of_range_pct", "düzelt")})
+                errors.append({"field": col_key, "error_type": "Yüzdelik Aralık", "message": f"{col_name} değeri %0-100 dışında ({val}).", "reason": "Yüzdelik metrikler 0 ile 100 arasında olmalıdır.", "action": get_action("out_of_range_pct", "düzelt")})
                 
         perf = row.get("performance")
         if not pd.isna(perf):
             if perf < 0:
-                errors.append({"field": "performance", "error_type": "Aralık Hatası", "message": f"Performans negatif olamaz ({perf}).", "reason": "Performans değeri 0'dan küçük olamaz.", "action": get_action("out_of_range_pct", "düzelt")})
+                errors.append({"field": "performance", "error_type": "Yüzdelik Aralık", "message": f"Performans negatif olamaz ({perf}).", "reason": "Performans değeri 0'dan küçük olamaz.", "action": get_action("out_of_range_pct", "düzelt")})
             elif is_active("capacity_exceed") and perf > 100:
-                errors.append({"field": "performance", "error_type": "Kapasite Aşımı Uyarısı", "message": f"Performans %100'ün üzerinde ({perf}).", "reason": "Teorik hedeflerden daha hızlı çalışılmış olabilir.", "action": get_action("capacity_exceed", "uyar")})
+                errors.append({"field": "performance", "error_type": "Kapasite Aşımı (P > 100)", "message": f"Performans %100'ün üzerinde ({perf}).", "reason": "Teorik hedeflerden daha hızlı çalışılmış olabilir.", "action": get_action("capacity_exceed", "uyar")})
             
     # 4. Sürelerin Tutarlılığı (Duruş = Planlı + Plansız)
     dt = row.get("down_time") or 0.0
@@ -242,34 +242,34 @@ def validate_row(row):
     if is_active("downtime_mismatch"):
         if not pd.isna(row.get("down_time")):
             if abs(dt - (p_dt + up_dt)) > 0.1:
-                errors.append({"field": "down_time", "error_type": "Tutarsızlık", "message": f"Duruş süreleri tutarsız (Planlı: {p_dt} + Plansız: {up_dt} != Toplam: {dt}).", "reason": "Alt duruş kırılımlarının toplamı, genel duruş süresine eşit olmalıdır.", "action": get_action("downtime_mismatch", "düzelt")})
+                errors.append({"field": "down_time", "error_type": "Duruş Süresi Kırılımı", "message": f"Duruş süreleri tutarsız (Planlı: {p_dt} + Plansız: {up_dt} != Toplam: {dt}).", "reason": "Alt duruş kırılımlarının toplamı, genel duruş süresine eşit olmalıdır.", "action": get_action("downtime_mismatch", "uyar")})
 
     if is_active("downtime_gt_worktime") and dt > wt and wt > 0:
-        errors.append({"field": "down_time, work_time", "error_type": "Mantıksal Hata", "message": "Toplam Duruş, Çalışma Süresinden büyük.", "reason": "Makine, vardiya süresinden daha uzun süre duruş kaydedemez.", "action": get_action("downtime_gt_worktime", "düzelt")})
+        errors.append({"field": "down_time, work_time", "error_type": "Duruş > Çalışma Süresi", "message": "Toplam Duruş, Çalışma Süresinden büyük.", "reason": "Makine, vardiya süresinden daha uzun süre duruş kaydedemez.", "action": get_action("downtime_gt_worktime", "düzelt")})
 
     # 5. Domain & Fiziksel Kurallar
     if is_active("prod_zero_worktime") and (total_prod or 0) > 0 and wt <= 0:
-        errors.append({"field": "total_produced, work_time", "error_type": "Fiziksel İmkansızlık", "message": "Çalışma süresi 0 iken üretim raporlanmış.", "reason": "Makine çalışmadan parça üretemez. Süre kaydı eksik olabilir.", "action": get_action("prod_zero_worktime", "düzelt")})
+        errors.append({"field": "total_produced, work_time", "error_type": "Süresiz Üretim", "message": "Çalışma süresi 0 iken üretim raporlanmış.", "reason": "Makine çalışmadan parça üretemez. Süre kaydı eksik olabilir.", "action": get_action("prod_zero_worktime", "düzelt")})
 
     if is_active("zero_prod_long_run") and wt > 60 and (pd.isna(total_prod) or total_prod == 0):
-        errors.append({"field": "total_produced, work_time", "error_type": "Şüpheli Üretimsizlik", "message": "Çalışma süresi 60 dakikadan fazla ancak üretim 0.", "reason": "Makinenin 1 saatten uzun süre çalışıp hiç ürün vermemesi anomali belirtisidir.", "action": get_action("zero_prod_long_run", "uyar")})
+        errors.append({"field": "total_produced, work_time", "error_type": "Uzun Çalışma & Sıfır Ürün", "message": "Çalışma süresi 60 dakikadan fazla ancak üretim 0.", "reason": "Makinenin 1 saatten uzun süre çalışıp hiç ürün vermemesi anomali belirtisidir.", "action": get_action("zero_prod_long_run", "uyar")})
 
     a = row.get("availability")
     if is_active("avail_100_with_downtime") and dt > 0 and a == 100.0:
-        errors.append({"field": "availability, down_time", "error_type": "Mantıksal Hata", "message": "Duruş varken Kullanılabilirlik %100.", "reason": "Duruş yaşandığında Kullanılabilirlik metriginin (A) %100'den düşük olması gerekir.", "action": get_action("avail_100_with_downtime", "düzelt")})
+        errors.append({"field": "availability, down_time", "error_type": "Kullanılabilirlik (A) Hatası", "message": "Duruş varken Kullanılabilirlik %100.", "reason": "Duruş yaşandığında Kullanılabilirlik metriginin (A) %100'den düşük olması gerekir.", "action": get_action("avail_100_with_downtime", "düzelt")})
 
     # 6. Tarih Kontrolü
     if is_active("invalid_date"):
         if pd.isna(row.get("date")):
-            errors.append({"field": "date", "error_type": "Eksik Veri", "message": "Üretim tarihi eksik.", "reason": "Kayıtların zaman çizelgesine eklenebilmesi için tarih zorunludur.", "action": get_action("invalid_date", "reddet")})
+            errors.append({"field": "date", "error_type": "Tarih Doğrulaması", "message": "Üretim tarihi eksik.", "reason": "Kayıtların zaman çizelgesine eklenebilmesi için tarih zorunludur.", "action": get_action("invalid_date", "düzelt")})
         else:
             try:
                 date_val = row.get("date")
                 date_obj = pd.to_datetime(date_val).date() if hasattr(date_val, "date") else pd.to_datetime(date_val).date()
                 if date_obj > datetime.utcnow().date():
-                    errors.append({"field": "date", "error_type": "Mantıksal Hata", "message": f"Tarih gelecekte ({date_obj}).", "reason": "Gelecek bir tarihe gerçekleşmiş üretim kaydı girilemez.", "action": get_action("invalid_date", "düzelt")})
+                    errors.append({"field": "date", "error_type": "Tarih Doğrulaması", "message": f"Tarih gelecekte ({date_obj}).", "reason": "Gelecek bir tarihe gerçekleşmiş üretim kaydı girilemez.", "action": get_action("invalid_date", "düzelt")})
             except Exception:
-                errors.append({"field": "date", "error_type": "Format Hatası", "message": "Geçersiz tarih formatı.", "reason": "Sistem tarihi algılayamadı.", "action": get_action("invalid_date", "reddet")})
+                errors.append({"field": "date", "error_type": "Tarih Doğrulaması", "message": "Geçersiz tarih formatı.", "reason": "Sistem tarihi algılayamadı.", "action": get_action("invalid_date", "düzelt")})
 
     # 7. Ek OEE ve Kapasite Kontrolleri
     p = row.get("performance")
@@ -278,7 +278,7 @@ def validate_row(row):
     if is_active("oee_mismatch") and not pd.isna(a) and not pd.isna(p) and not pd.isna(q) and not pd.isna(oee):
         calc_oee = (a / 100) * (p / 100) * (q / 100) * 100
         if abs(calc_oee - oee) > 1.0: 
-            errors.append({"field": "oee", "error_type": "Matematiksel Tutarsızlık", "message": f"OEE Hatalı Hesaplanmış (Raporlanan: {oee}, Beklenen: {round(calc_oee,1)}).", "reason": "OEE değeri her zaman Kullanılabilirlik * Performans * Kalite çarpımına eşit olmalıdır.", "action": get_action("oee_mismatch", "düzelt")})
+            errors.append({"field": "oee", "error_type": "OEE Çapraz Kontrolü", "message": f"OEE Hatalı Hesaplanmış (Raporlanan: {oee}, Beklenen: {round(calc_oee,1)}).", "reason": "OEE değeri her zaman Kullanılabilirlik * Performans * Kalite çarpımına eşit olmalıdır.", "action": get_action("oee_mismatch", "düzelt")})
 
     return errors
 
@@ -377,10 +377,12 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             stats["warning"] += 1
             
         if not is_valid:
-            if any(isinstance(e, dict) and e.get("action") == "düzelt" for e in errors):
-                stats["fix"] += 1
-            if any(isinstance(e, dict) and e.get("action") == "reddet" for e in errors):
+            has_reject = any(isinstance(e, dict) and e.get("action") == "reddet" for e in errors)
+            has_fix = any(isinstance(e, dict) and e.get("action") == "düzelt" for e in errors)
+            if has_reject:
                 stats["reject"] += 1
+            elif has_fix:
+                stats["fix"] += 1
             
         record_dict["validation_errors"] = json.dumps(errors, ensure_ascii=False) if errors else None
         
@@ -537,10 +539,12 @@ async def get_stats(db: Session = Depends(get_db)):
         if r.validation_errors:
             try:
                 errors = json.loads(r.validation_errors)
-                if any(isinstance(e, dict) and e.get("action") == "düzelt" for e in errors):
-                    fix += 1
-                if any(isinstance(e, dict) and e.get("action") == "reddet" for e in errors):
+                has_reject = any(isinstance(e, dict) and e.get("action") == "reddet" for e in errors)
+                has_fix = any(isinstance(e, dict) and e.get("action") == "düzelt" for e in errors)
+                if has_reject:
                     reject += 1
+                elif has_fix:
+                    fix += 1
             except:
                 pass
                 

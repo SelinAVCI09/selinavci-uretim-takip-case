@@ -42,7 +42,10 @@ export default function Filter() {
     if (filters.statusFilter === 'valid') data = data.filter(r => r.is_valid === true);
     if (filters.statusFilter === 'warning') data = data.filter(r => r.record_status === 'warning');
     if (filters.statusFilter === 'error') data = data.filter(r => r.record_status === 'error' || (!r.is_valid && !r.record_status)); // Geriye dönük uyumluluk
-    if (filters.statusFilter === 'fix') data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'düzelt'));
+    if (filters.statusFilter === 'fix') data = data.filter(r => {
+      const errs = parseErrors(r.validation_errors);
+      return !r.is_valid && !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+    });
     if (filters.statusFilter === 'reject') data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'reddet'));
     if (filters.statusFilter !== 'all' && filters.errorType) {
       data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.error_type === filters.errorType));
@@ -73,11 +76,20 @@ export default function Filter() {
       .filter(r => {
         if (filters.statusFilter === 'warning') return r.record_status === 'warning';
         if (filters.statusFilter === 'error') return r.record_status === 'error' || (!r.is_valid && !r.record_status);
-        if (filters.statusFilter === 'fix') return !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'düzelt');
+        if (filters.statusFilter === 'fix') {
+          const errs = parseErrors(r.validation_errors);
+          return !r.is_valid && !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+        }
         if (filters.statusFilter === 'reject') return !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'reddet');
         return !r.is_valid;
       })
-      .flatMap(r => parseErrors(r.validation_errors).map(err => err?.error_type))
+      .flatMap(r => {
+        const errs = parseErrors(r.validation_errors);
+        if (filters.statusFilter === 'reject') return errs.filter(e => e?.action === 'reddet').map(e => e?.error_type);
+        if (filters.statusFilter === 'fix') return errs.filter(e => e?.action === 'düzelt').map(e => e?.error_type);
+        if (filters.statusFilter === 'warning') return errs.filter(e => e?.action === 'uyar').map(e => e?.error_type);
+        return errs.map(e => e?.error_type);
+      })
       .filter(Boolean)
   )];
 
@@ -101,7 +113,10 @@ export default function Filter() {
   const validCount = records.filter(r => r.is_valid).length;
   const warningCount = records.filter(r => r.record_status === 'warning').length;
   const errorCount = records.filter(r => r.record_status === 'error' || (!r.is_valid && !r.record_status)).length;
-  const fixCount = records.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'düzelt')).length;
+  const fixCount = records.filter(r => {
+    const errs = parseErrors(r.validation_errors);
+    return !r.is_valid && !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+  }).length;
   const rejectCount = records.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'reddet')).length;
 
   return (
@@ -136,11 +151,11 @@ export default function Filter() {
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Kayıt Durumu</label>
               <select value={filters.statusFilter} onChange={e => setFilters({...filters, statusFilter: e.target.value, errorType: ''})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
                 <option value="all">Tüm Kayıtlar ({records.length})</option>
-                <option value="valid">✅ Geçerli Kayıtlar ({validCount})</option>
-                <option value="warning">⚠️ Uyarılar ({warningCount})</option>
-                <option value="error">❌ Tüm Hatalı Kayıtlar ({errorCount})</option>
-                <option value="fix">✏️ Düzeltilmesi Gerekenler ({fixCount})</option>
-                <option value="reject">🗑️ Reddedilecekler ({rejectCount})</option>
+                <option value="valid">✅ Geçerli ({validCount})</option>
+                <option value="warning">⚠️ Uyarı (Şüpheli) ({warningCount})</option>
+                <option value="error">❌ Kesin Hatalı (Tümü) ({errorCount})</option>
+                <option value="fix">✏️ Kesin Hatalı (Düzeltilmesi Gerekenler) ({fixCount})</option>
+                <option value="reject">❌ Kesin Hatalı (Reddedilenler) ({rejectCount})</option>
               </select>
               
               {['warning', 'error', 'fix', 'reject'].includes(filters.statusFilter) && uniqueErrorTypes.length > 0 && (
@@ -178,9 +193,17 @@ export default function Filter() {
                     <span className="text-green-600 flex items-center"><CheckCircle size={14} className="mr-1"/> Geçerli</span>
                   ) : (
                     <div className="group flex items-center">
-                          <span className={`flex items-center cursor-help font-medium ${r.record_status === 'warning' ? 'text-orange-500' : 'text-red-600'}`}>
-                            <AlertCircle size={14} className="mr-1"/> {r.record_status === 'warning' ? 'Uyarı' : 'Hatalı'}
+                      {(() => {
+                        const errs = parseErrors(r.validation_errors);
+                        const isReject = errs.some(e => e?.action === 'reddet');
+                        const statusColor = r.record_status === 'warning' ? 'text-orange-500' : isReject ? 'text-red-600' : 'text-blue-600';
+                        const statusText = r.record_status === 'warning' ? 'Uyarı' : isReject ? 'Reddedilecek' : 'Düzeltilecek';
+                        return (
+                          <span className={`flex items-center cursor-help font-medium ${statusColor}`}>
+                            <AlertCircle size={14} className="mr-1"/> {statusText}
                           </span>
+                        );
+                      })()}
                       <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-3 z-50">
                         <p className="text-xs font-bold text-slate-800 dark:text-white mb-2 border-b border-slate-100 dark:border-slate-700 pb-1">Hata Detayları:</p>
                         <ul className="text-[11px] space-y-2 text-slate-600 dark:text-slate-400 whitespace-normal">

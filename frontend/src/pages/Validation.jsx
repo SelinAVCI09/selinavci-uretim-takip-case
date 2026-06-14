@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { AlertTriangle, CheckCircle, Edit2, Trash2, Save, X, History, Settings, Filter as FilterIcon, Search, RefreshCw, BarChart2, Download } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit2, Trash2, Save, X, History, Settings, Filter as FilterIcon, Search, RefreshCw, BarChart2, Download, ArrowRight } from 'lucide-react';
 
 export default function Validation() {
   const [records, setRecords] = useState([]);
@@ -11,6 +11,7 @@ export default function Validation() {
   
   // Yeni Eklentiler (Filtreleme & Ayarlar)
   const [isRevalidating, setIsRevalidating] = useState(false);
+  const [isGlobalHistoryOpen, setIsGlobalHistoryOpen] = useState(false);
   const [filters, setFilters] = useState({ search: '', status: '', errorType: '' });
 
   // Veritabanında eski formattaki hatalar varsa sayfanın çökmesini (beyaz ekran) engeller
@@ -71,13 +72,21 @@ export default function Validation() {
       .filter(r => {
         if (filters.status === 'error') return r?.record_status === 'error';
         if (filters.status === 'warning') return r?.record_status === 'warning';
-        if (filters.status === 'fix') return parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt');
+        if (filters.status === 'fix') {
+          const errs = parseErrors(r?.validation_errors);
+          return !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+        }
         if (filters.status === 'reject') return parseErrors(r?.validation_errors).some(e => e?.action === 'reddet');
         return true;
       })
-      .reduce((acc, r) => {
-        return acc.concat(parseErrors(r?.validation_errors).map(err => err?.error_type).filter(Boolean));
-      }, [])
+      .flatMap(r => {
+        const errs = parseErrors(r?.validation_errors);
+        if (filters.status === 'reject') return errs.filter(e => e?.action === 'reddet').map(e => e?.error_type);
+        if (filters.status === 'fix') return errs.filter(e => e?.action === 'düzelt').map(e => e?.error_type);
+        if (filters.status === 'warning') return errs.filter(e => e?.action === 'uyar').map(e => e?.error_type);
+        return errs.map(e => e?.error_type);
+      })
+      .filter(Boolean)
   )];
   
   const filteredRecords = safeRecords.filter(r => {
@@ -91,7 +100,10 @@ export default function Validation() {
     if (filters.status === 'valid') matchStatus = r?.is_valid === true;
     else if (filters.status === 'error') matchStatus = r?.record_status === 'error';
     else if (filters.status === 'warning') matchStatus = r?.record_status === 'warning';
-    else if (filters.status === 'fix') matchStatus = parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt');
+    else if (filters.status === 'fix') {
+      const errs = parseErrors(r?.validation_errors);
+      matchStatus = !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+    }
     else if (filters.status === 'reject') matchStatus = parseErrors(r?.validation_errors).some(e => e?.action === 'reddet');
 
     const matchErrorType = filters.errorType === '' || parseErrors(r?.validation_errors).some(e => e?.error_type === filters.errorType);
@@ -100,6 +112,15 @@ export default function Validation() {
 
   const toggleHistory = (recordId) => {
     setExpandedHistory(prev => ({ ...prev, [recordId]: !prev[recordId] }));
+  };
+
+  // Geçmiş panelinden direkt olarak ilgili kaydı tabloda filtreleyip gösterir
+  const handleGoToRecord = (recordId) => {
+    setFilters({ search: String(recordId), status: '', errorType: '' });
+    setIsGlobalHistoryOpen(false);
+    setTimeout(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }, 100);
   };
 
   const handleEditClick = (record) => {
@@ -177,14 +198,21 @@ export default function Validation() {
   // İstatistik Rapor Verileri (Kartlar için filtrelenmiş veriler üzerinden)
   const errorCount = filteredRecords.filter(r => r?.record_status === 'error').length;
   const warningCount = filteredRecords.filter(r => r?.record_status === 'warning').length;
-  const fixCount = filteredRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt')).length;
+  const fixCount = filteredRecords.filter(r => {
+    const errs = parseErrors(r?.validation_errors);
+    return !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+  }).length;
+  const rejectCount = filteredRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'reddet')).length;
 
   // Dropdown (Select) İçin Genel Adetler (Tüm safeRecords üzerinden)
   const totalCountOverall = safeRecords.length;
   const validCountOverall = safeRecords.filter(r => r?.is_valid).length;
   const errorCountOverall = safeRecords.filter(r => r?.record_status === 'error').length;
   const warningCountOverall = safeRecords.filter(r => r?.record_status === 'warning').length;
-  const fixCountOverall = safeRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt')).length;
+  const fixCountOverall = safeRecords.filter(r => {
+    const errs = parseErrors(r?.validation_errors);
+    return !errs.some(e => e?.action === 'reddet') && errs.some(e => e?.action === 'düzelt');
+  }).length;
   const rejectCountOverall = safeRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'reddet')).length;
 
   const getActionColor = (action) => {
@@ -217,6 +245,25 @@ export default function Validation() {
     link.click();
   };
 
+  // Tüm kayıtlardaki değişiklik geçmişlerini toplayıp kronolojik (en yeniden en eskiye) sıralar
+  const globalHistory = useMemo(() => {
+    const historyList = [];
+    safeRecords.forEach(r => {
+      const trails = parseAuditTrail(r?.audit_trail);
+      if (trails.length > 0) {
+        trails.forEach(t => {
+          historyList.push({
+            record_id: r.record_id,
+            work_order_no: r.work_order_no,
+            timestamp: t.timestamp,
+            changes: t.changes
+          });
+        });
+      }
+    });
+    return historyList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [safeRecords]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Üst Bilgi ve Butonlar */}
@@ -230,6 +277,9 @@ export default function Validation() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setIsGlobalHistoryOpen(true)} className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm shadow-sm">
+            <History size={16} className="mr-2" /> Geçmiş
+          </button>
           <button onClick={handleExportCSV} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shadow-sm">
             <Download size={16} className="mr-2" /> CSV İndir
           </button>
@@ -240,22 +290,26 @@ export default function Validation() {
       </div>
 
       {/* Kalite Raporu (Özet Kartları) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center">
-          <div className="p-3 bg-slate-100 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 rounded-lg mr-4"><BarChart2 size={24}/></div>
-          <div><p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Toplam Sorunlu Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{filteredRecords.length}</h3></div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center">
+          <div className="p-3 bg-slate-100 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 rounded-lg mr-3"><BarChart2 size={24}/></div>
+          <div><p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Toplam Sorunlu Kayıt</p><h3 className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{filteredRecords.length}</h3></div>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-red-200 dark:border-red-900/30 shadow-sm flex items-center">
-          <div className="p-3 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-lg mr-4"><AlertTriangle size={24}/></div>
-          <div><p className="text-xs font-bold text-red-500 dark:text-red-400 uppercase">Kesin Hatalı Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{errorCount}</h3></div>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-red-200 dark:border-red-900/30 shadow-sm flex items-center">
+          <div className="p-3 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-lg mr-3"><AlertTriangle size={24}/></div>
+          <div><p className="text-[11px] font-bold text-red-500 dark:text-red-400 uppercase">Kesin Hatalı (Tümü)</p><h3 className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{errorCount}</h3></div>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-orange-200 dark:border-orange-900/30 shadow-sm flex items-center">
-          <div className="p-3 bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 rounded-lg mr-4"><AlertTriangle size={24}/></div>
-          <div><p className="text-xs font-bold text-orange-500 dark:text-orange-400 uppercase">Sadece Uyarı Barındıran Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{warningCount}</h3></div>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-red-300 dark:border-red-900/50 shadow-sm flex items-center">
+          <div className="p-3 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 rounded-lg mr-3"><Trash2 size={24}/></div>
+          <div><p className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase">Reddedilenler</p><h3 className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{rejectCount}</h3></div>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-blue-200 dark:border-blue-900/30 shadow-sm flex items-center">
-          <div className="p-3 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg mr-4"><Edit2 size={24}/></div>
-          <div><p className="text-xs font-bold text-blue-500 dark:text-blue-400 uppercase">Düzeltilmesi Gereken</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{fixCount}</h3></div>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-blue-200 dark:border-blue-900/30 shadow-sm flex items-center">
+          <div className="p-3 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg mr-3"><Edit2 size={24}/></div>
+          <div><p className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase">Kesin Hatalı (Düzelt)</p><h3 className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{fixCount}</h3></div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-orange-200 dark:border-orange-900/30 shadow-sm flex items-center">
+          <div className="p-3 bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 rounded-lg mr-3"><AlertTriangle size={24}/></div>
+          <div><p className="text-[11px] font-bold text-orange-500 dark:text-orange-400 uppercase">Uyarı (Şüpheli)</p><h3 className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{warningCount}</h3></div>
         </div>
       </div>
 
@@ -270,12 +324,12 @@ export default function Validation() {
           </div>
           <div className="flex gap-2">
             <select value={filters.status} onChange={e => setFilters({...filters, status: e.target.value, errorType: ''})} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none">
-              <option value="">Tüm Durumlar ({totalCountOverall})</option>
-              {validCountOverall > 0 && <option value="valid">✅ Geçerli (Düzenlenenler) ({validCountOverall})</option>}
-              <option value="error">❌ Kesin Hatalı ({errorCountOverall})</option>
-              <option value="warning">⚠️ Sadece Uyarı ({warningCountOverall})</option>
-              <option value="fix">✏️ Düzeltilmesi Gerekenler ({fixCountOverall})</option>
-              <option value="reject">🗑️ Reddedilecekler ({rejectCountOverall})</option>
+              <option value="">Tüm Kayıtlar ({totalCountOverall})</option>
+              {validCountOverall > 0 && <option value="valid">✅ Geçerli ({validCountOverall})</option>}
+              <option value="error">❌ Kesin Hatalı (Tümü) ({errorCountOverall})</option>
+              <option value="warning">⚠️ Uyarı (Şüpheli) ({warningCountOverall})</option>
+              <option value="fix">✏️ Kesin Hatalı (Düzeltilmesi Gerekenler) ({fixCountOverall})</option>
+              <option value="reject">❌ Kesin Hatalı (Reddedilenler) ({rejectCountOverall})</option>
             </select>
             <select value={filters.errorType} onChange={e => setFilters({...filters, errorType: e.target.value})} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none max-w-[200px]">
               <option value="">Tüm Hata Tipleri</option>
@@ -317,9 +371,13 @@ export default function Validation() {
                         <div className="flex flex-col items-start gap-1.5">
                           <span>#{record.record_id}</span>
                           {record.record_status === 'error' ? (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Kesin Hatalı</span>
+                            parseErrors(record.validation_errors).some(e => e?.action === 'reddet') ? (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Reddedilecek</span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Düzeltilecek</span>
+                            )
                           ) : record.record_status === 'warning' ? (
-                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Uyarı</span>
+                            <span className="px-2 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Uyarı</span>
                           ) : (
                             <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 rounded text-[10px] font-bold uppercase whitespace-nowrap tracking-wider">Geçerli</span>
                           )}
@@ -490,6 +548,47 @@ export default function Validation() {
           </div>
         )}
       </div>
+
+      {/* Global Geçmiş (Audit Trail) Modal */}
+      {isGlobalHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsGlobalHistoryOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center"><History className="mr-2" size={20} /> Genel Değişiklik Geçmişi</h2>
+              <button onClick={() => setIsGlobalHistoryOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={24} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/20">
+              {globalHistory.length === 0 ? (
+                <div className="text-center text-slate-500 py-10">Henüz hiçbir kayıt üzerinde düzeltme yapılmamış.</div>
+              ) : (
+                <div className="space-y-4">
+                  {globalHistory.map((log, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-800 p-4 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
+                      <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100 dark:border-slate-700">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-slate-700 dark:text-slate-200">Kayıt #{log.record_id} <span className="text-slate-400 text-xs font-normal">({log.work_order_no || 'Eksik İş Emri'})</span></span>
+                          <button onClick={() => handleGoToRecord(log.record_id)} className="flex items-center text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors font-medium border border-indigo-100 dark:border-indigo-800">
+                            Kayda Git <ArrowRight size={10} className="ml-1" />
+                          </button>
+                        </div>
+                        <span className="text-xs text-slate-500">{log.timestamp ? new Date(log.timestamp).toLocaleString('tr-TR') : '-'}</span>
+                      </div>
+                      <div className="space-y-1">
+                        {log.changes.map((c, j) => (
+                          <div key={j} className="text-sm">
+                            <span className="font-medium text-slate-600 dark:text-slate-400">{c.field}:</span>{' '}
+                            <span className="text-red-500 line-through mr-1">{String(c.old ?? 'N/A')}</span> &rarr; <span className="text-green-600 font-semibold ml-1">{String(c.new ?? 'N/A')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

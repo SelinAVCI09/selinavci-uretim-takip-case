@@ -164,7 +164,31 @@ Validasyonu başarıyla geçen veriler API üzerinden aşağıdaki mimariyle gö
 
 ---
 
-## 🛠️ Kullanılan Kütüphaneler ve Seçim Gerekçeleri
+## 🗄️ Veritabanı Şeması (Database Structure)
+Proje, kurulum kolaylığı ve taşınabilirlik (MVP hedefine uygunluk) açısından **SQLite** veritabanı ile çalışmaktadır. Arka planda `SQLAlchemy ORM` kullanılarak iki ana tablo tasarlanmıştır:
+
+**1. `production_records` (Üretim Kayıtları Tablosu):**
+MES sisteminden yüklenen ham verilerin, validasyon sonuçlarının ve kullanıcı düzenlemelerinin tutulduğu omurga tablodur.
+* `record_id`: Birincil Anahtar (Primary Key).
+* `date`, `shift`, `workstation_name` vb.: Üretim temel boyutları (String/Integer).
+* `oee`, `total_produced`, `down_time` vb.: Üretim ve performans metrikleri (Float/Integer).
+* `is_valid` (Boolean): Kaydın hedef API'ye gitmeye %100 uygun olup olmadığını belirtir.
+* `record_status` (String): Kaydın arayüzdeki hiyerarşik durumunu belirler (`valid`, `warning`, `error`).
+* `validation_errors` (JSON/Text): Kayıtta tespit edilen kalite sorunlarını (Reddet/Düzelt/Uyar seviyeleriyle birlikte) saklar.
+* `audit_trail` (JSON/Text): Kullanıcının arayüzden yaptığı düzeltmelerin "Eski Değer ➔ Yeni Değer" loglarını zaman damgasıyla tutar.
+
+**2. `sync_logs` (API İletişim Logları Tablosu):**
+Hedef sistemle (Magna API) kurulan ağ iletişiminin kanıtlarını (Audit) tutan tablodur. Çift gönderimi (Idempotency) engellemek için de referans olarak kullanılır.
+* `id`: Birincil Anahtar.
+* `production_date` & `shift`: Hangi vardiya paketinin gönderildiğini belirtir.
+* `payload` (JSON/Text): Hedef sisteme POST edilen paket verisi.
+* `status_code` & `response_data`: API'den dönen HTTP kodu (200, 422, 429 vb.) ve hata/başarı mesajı.
+* `is_success` (Boolean): Gönderimin başarılı olup olmadığını belirler.
+* `timestamp` (DateTime): İşlemin gerçekleştiği an.
+
+---
+
+## ️ Kullanılan Kütüphaneler ve Seçim Gerekçeleri
 
 **Backend:**
 * **FastAPI:** Yüksek hızlı, asenkron (`BackgroundTasks`) çalışmayı desteklediği ve otomatik Swagger/OpenAPI dokümantasyonu sunduğu için tercih edilmiştir.
@@ -182,7 +206,7 @@ Validasyonu başarıyla geçen veriler API üzerinden aşağıdaki mimariyle gö
 
 ## 🌟 Ekstra Geliştirmeler (Bonus İsterler)
 Case dokümanındaki taleplere ek olarak aşağıdaki "Senior" seviye mühendislik pratikleri projeye dahil edilmiştir:
-* **Audit Trail (İzlenebilirlik):** Hatalı verilerin kullanıcı tarafından değiştirilmesi durumunda eski değer/yeni değer geçmişi tutulmaktadır.
+* **Genel Geçmiş Paneli (Audit Trail) ve Kayda Git:** Veritabanındaki tüm kullanıcı düzeltmelerini tek bir modalda, kronolojik olarak listeyen gelişmiş log panelidir. Logun yanındaki "Kayda Git" butonu ile binlerce veri arasından filtreler sıfırlanıp direkt olarak düzeltilen satıra otomatik odaklanılır.
 * **Dinamik Aksiyon Yönetimi:** Tüm validasyon kurallarının açık/kapalı durumu ve hata seviyeleri (Reddet, Uyar, Düzelt) arayüzden değiştirilebilir.
 * **Otomatik OEE Formülizasyonu:** "Düzelt" modülünde kullanıcı `A, P, Q` verilerini değiştirirken, OEE değeri anlık (real-time) hesaplanarak ekrana yansır.
 * **100K+ Satır Performansı:** Pandas `to_dict` ile RAM optimizasyonu sağlanmıştır.

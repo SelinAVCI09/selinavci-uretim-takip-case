@@ -15,19 +15,19 @@ export default function MainLayout() {
     format_wo: { label: "İş Emri Formatı", desc: "Standart format (302 ile başlar, 10 hane)." },
     invalid_shift: { label: "Vardiya Kontrolü", desc: "Vardiya 1, 2 veya 3 olmalıdır." },
     missing_ws: { label: "Eksik İş İstasyonu", desc: "İş İstasyonu alanı zorunludur." },
-    missing_product: { label: "Eksik Ürün (Stok Adı)", desc: "Stok Adı alanı zorunludur." },
-    missing_metrics: { label: "Eksik Metrik Verisi", desc: "A, P, Q, Süre ve Üretim verileri boş olamaz." },
-    negative_prod: { label: "Geçersiz Üretim Miktarı", desc: "Üretim en az 1 olmalı, fire negatif olamaz." },
+    missing_product: { label: "Eksik Ürün (Stok)", desc: "Stok Adı alanı zorunludur." },
+    missing_metrics: { label: "Boş Metrik Verileri", desc: "A, P, Q, Süre ve Üretim verileri boş olamaz." },
+    invalid_date: { label: "Tarih Doğrulaması", desc: "Tarih boş veya bugünden ileri olamaz." },
+    negative_prod: { label: "Negatif Üretim / Fire", desc: "Üretim en az 1 olmalı, fire negatif olamaz." },
     scrap_gt_prod: { label: "Fire > Toplam Üretim", desc: "Fire miktarı üretimden büyük olamaz." },
-    out_of_range_pct: { label: "Yüzdelik Aralık", desc: "A, P, Q ve OEE 0-100 arasında olmalıdır." },
-    capacity_exceed: { label: "Kapasite Aşımı (Uyarı)", desc: "Performans %100'ü aşarsa uyar." },
-    downtime_mismatch: { label: "Duruş Tutarsızlığı", desc: "Toplam Duruş = Planlı + Plansız Duruş." },
-    downtime_gt_worktime: { label: "Duruş > Çalışma Süresi", desc: "Duruş, çalışma süresini geçemez." },
     prod_zero_worktime: { label: "Süresiz Üretim", desc: "Çalışma süresi sıfırken üretim yapılamaz." },
-    zero_prod_long_run: { label: "Uzun Çalışma & 0 Üretim", desc: "Çalışma > 60dk iken üretim 0 ise uyar." },
-    avail_100_with_downtime: { label: "Duruş Varken A=%100", desc: "Duruş varsa Kullanılabilirlik (A) %100 olamaz." },
-    invalid_date: { label: "Geçersiz/Gelecek Tarih", desc: "Tarih boş veya bugünden ileri olamaz." },
-    oee_mismatch: { label: "OEE Hesabı Hatası", desc: "A * P * Q ile Raporlanan OEE eşleşmelidir." }
+    zero_prod_long_run: { label: "Uzun Çalışma & Sıfır Ürün", desc: "Çalışma > 60dk iken üretim 0 ise uyar." },
+    downtime_mismatch: { label: "Duruş Süresi Kırılımı", desc: "Toplam Duruş = Planlı + Plansız Duruş." },
+    downtime_gt_worktime: { label: "Duruş > Çalışma Süresi", desc: "Duruş, çalışma süresini geçemez." },
+    out_of_range_pct: { label: "Yüzdelik Aralık", desc: "A, P, Q ve OEE 0-100 arasında olmalıdır." },
+    oee_mismatch: { label: "OEE Çapraz Kontrolü", desc: "A * P * Q ile Raporlanan OEE eşleşmelidir." },
+    avail_100_with_downtime: { label: "Kullanılabilirlik (A) Hatası", desc: "Duruş varsa Kullanılabilirlik (A) %100 olamaz." },
+    capacity_exceed: { label: "Kapasite Aşımı (P > 100)", desc: "Performans %100'ü aşarsa uyar." }
   };
 
   const handleOpenSettings = async () => {
