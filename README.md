@@ -86,7 +86,10 @@ Sistemin kalbini oluşturan, kirli verileri tespit edip onarılmasını sağlaya
   * **❌ Kesin Hatalı (Reddedilenler):** İzlenebilirliği tamamen kırık veya kurtarılamayacak durumda olan eksik verilerdir (Örn: *İş İstasyonunun boş olması*). Sistem operatöre doğrudan bunu çöpe atmayı önerir. Hedef API'ye **asla gönderilmez**.
   * **✏️ Kesin Hatalı (Düzeltilmesi Gerekenler):** Formata veya kurala uymayan, matematiksel olarak yanlış hesaplanmış ancak operatörün anlık müdahalesi ile onarılabilecek (kurtarılabilir) verilerdir. Arayüzde "Düzelt" dendiğinde A, P, Q değerleri değiştiği an **OEE otomatik hesaplanır**.
   * **⚠️ Uyarı (Şüpheli):** Teorik kapasite aşımı (OEE > %100) gibi fiziksel olarak mümkün ama şüpheli durumlardır. Geçerli kabul edilebilir ancak arayüzde turuncu renkli bir bayrakla işaretlenir.
-* **Dinamik Validasyon Ayarları:** <br> ![Validasyon Ayarları](docs/validation2.png) <br> Sistemin kalite denetimi yaparken hangi kuralları dikkate alıp hangilerini görmezden geleceğini (Örn: *Negatif üretime izin ver/verme*) UI üzerinden anlık olarak yönetmenizi sağlar. Ayarlar kaydedildiğinde sistem tüm kayıtları yeniden test eder.
+* **Dinamik Validasyon Ayarları (Kural Motoru):** <br> ![Validasyon Ayarları](docs/validation2.png) <br> Teorik üretim kurallarını sahanın gerçeklerine uyarlamak için geliştirilmiş dinamik bir yönetim panelidir.
+  * Sistemdeki 17 farklı kalite kuralının aktif/pasif durumunu tek tıkla değiştirebilirsiniz.
+  * Kuralların varsayılan aksiyonlarını (**❌ Reddet, ✏️ Düzelt, ⚠️ Uyar**) fabrikanızın işleyişine göre esnetebilirsiniz. (Örn: *Gece vardiyasında atılan hatalı bir tarihi doğrudan 'Reddet' yapmak yerine, mühendisin onarabilmesi için 'Düzelt' seviyesine çekmek.*)
+  * Ayarlar kaydedildiği anda arka planda kusursuz bir `Revalidate` (Yeniden Doğrulama) işlemi çalışır ve veritabanındaki tüm kayıtlar anında yeni kurallara göre yeniden sınıflandırılır.
 
 ### 5. Hedef API Senkronizasyonu ve Log Kayıtları
 Bu bölüm %100 temizlenmiş verilerin hedef REST API'ye (Magna) aktarılmasını ve izlenmesini sağlar.
@@ -208,7 +211,7 @@ Hedef sistemle (Magna API) kurulan ağ iletişiminin kanıtlarını (Audit) tuta
 Case dokümanındaki taleplere ek olarak aşağıdaki "Senior" seviye mühendislik pratikleri projeye dahil edilmiştir:
 * **Genel Geçmiş Paneli (Audit Trail) ve Kayda Git:** Veritabanındaki tüm kullanıcı düzeltmelerini tek bir modalda, kronolojik olarak listeyen gelişmiş log panelidir. Logun yanındaki "Kayda Git" butonu ile binlerce veri arasından filtreler sıfırlanıp direkt olarak düzeltilen satıra otomatik odaklanılır.
 * **Dinamik Aksiyon Yönetimi:** Tüm validasyon kurallarının açık/kapalı durumu ve hata seviyeleri (Reddet, Uyar, Düzelt) arayüzden değiştirilebilir.
-* **Otomatik OEE Formülizasyonu:** "Düzelt" modülünde kullanıcı `A, P, Q` verilerini değiştirirken, OEE değeri anlık (real-time) hesaplanarak ekrana yansır.
+* **Veri Bütünlüğü (Data Integrity) ve Zincirleme Hesaplama:** Formül tabanlı olan metriklerin (OEE, Kalite, Kullanılabilirlik, Toplam Duruş) "Düzelt" formunda manuel girilmesi engellenmiştir (Read-Only/Disabled). Operatör yalnızca kök verileri (Örn: Fire Adedi, Plansız Duruş Süresi) değiştirdiğinde sistem tüm bağlı metrikleri domino etkisiyle eşzamanlı ve anlık (real-time) hesaplayarak veri tutarsızlığını (human-error) %100 önler.
 * **100K+ Satır Performansı:** Pandas `to_dict` ile RAM optimizasyonu sağlanmıştır.
 * **Yapay Zeka (AI) Şeffaflığı:** Süreç boyunca karşılaşılan zorluklarda veya mimari tartışmalarda yapay zeka araçlarından nasıl destek alındığı `.ai_usage` klasöründe paylaşılmıştır.
 * **Dışa Aktarma (Export):** İlgili raporlar ve gönderilmeyi bekleyen vardiyalar Excel/CSV ve PDF formatında sistemden indirilebilir.
