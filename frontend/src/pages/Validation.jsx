@@ -142,14 +142,41 @@ export default function Validation() {
     setEditFormData(prev => {
       const newData = { ...prev, [field]: value };
       
-      // OEE Otomatik Hesaplama (A, P veya Q değişirse formda anında güncelle)
-      if (['availability', 'performance', 'quality'].includes(field)) {
-        const a = newData.availability;
-        const p = newData.performance;
-        const q = newData.quality;
-        if (a != null && p != null && q != null) {
-          newData.oee = Number(((a / 100) * (p / 100) * (q / 100) * 100).toFixed(2));
+      // 1. Toplam Duruş Otomatik Hesaplama
+      if (['planned_down_time', 'unplanned_down_time'].includes(field)) {
+        const p_dt = newData.planned_down_time || 0;
+        const u_dt = newData.unplanned_down_time || 0;
+        newData.down_time = Number((p_dt + u_dt).toFixed(2));
+      }
+
+      // 2. Kalite (Q) Otomatik Hesaplama: (Üretim - Fire) / Üretim
+      if (['total_produced', 'scrap_qty'].includes(field)) {
+        const prod = newData.total_produced || 0;
+        const scrap = newData.scrap_qty || 0;
+        if (prod > 0) {
+          newData.quality = Number((((prod - scrap) / prod) * 100).toFixed(2));
+        } else {
+          newData.quality = 0;
         }
+      }
+
+      // 3. Kullanılabilirlik (A) Otomatik Hesaplama: Çalışma / (Çalışma + Plansız Duruş)
+      if (['work_time', 'unplanned_down_time'].includes(field)) {
+        const wt = newData.work_time || 0;
+        const u_dt = newData.unplanned_down_time || 0;
+        if (wt + u_dt > 0) {
+          newData.availability = Number(((wt / (wt + u_dt)) * 100).toFixed(2));
+        } else {
+          newData.availability = 0;
+        }
+      }
+
+      // 4. OEE Otomatik Hesaplama (A * P * Q) Zincirleme Tetiklenir
+      const a = newData.availability;
+      const p = newData.performance;
+      const q = newData.quality;
+      if (a != null && p != null && q != null) {
+        newData.oee = Number(((a / 100) * (p / 100) * (q / 100) * 100).toFixed(2));
       }
       return newData;
     });
@@ -497,28 +524,28 @@ export default function Validation() {
                                 <input type="number" value={editFormData.scrap_qty ?? ''} onChange={(e) => handleInputChange(e, 'scrap_qty')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">OEE (%)</label>
-                                <input type="number" step="0.1" value={editFormData.oee ?? ''} onChange={(e) => handleInputChange(e, 'oee')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">OEE (%) <span className="text-[10px] text-indigo-500 font-bold ml-1">(Otomatik)</span></label>
+                                <input type="number" step="0.1" value={editFormData.oee ?? ''} disabled className="w-full text-sm border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 rounded-md p-2 border cursor-not-allowed" />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kullanılabilirlik (A) %</label>
-                                <input type="number" step="0.1" value={editFormData.availability ?? ''} onChange={(e) => handleInputChange(e, 'availability')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kullanılabilirlik (A) % <span className="text-[10px] text-indigo-500 font-bold ml-1">(Otomatik)</span></label>
+                                <input type="number" step="0.1" value={editFormData.availability ?? ''} disabled className="w-full text-sm border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 rounded-md p-2 border cursor-not-allowed" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Performans (P) %</label>
                                 <input type="number" step="0.1" value={editFormData.performance ?? ''} onChange={(e) => handleInputChange(e, 'performance')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kalite (Q) %</label>
-                                <input type="number" step="0.1" value={editFormData.quality ?? ''} onChange={(e) => handleInputChange(e, 'quality')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kalite (Q) % <span className="text-[10px] text-indigo-500 font-bold ml-1">(Otomatik)</span></label>
+                                <input type="number" step="0.1" value={editFormData.quality ?? ''} disabled className="w-full text-sm border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 rounded-md p-2 border cursor-not-allowed" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Çalışma Süresi (dk)</label>
                                 <input type="number" step="0.1" value={editFormData.work_time ?? ''} onChange={(e) => handleInputChange(e, 'work_time')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Toplam Duruş (dk)</label>
-                                <input type="number" step="0.1" value={editFormData.down_time ?? ''} onChange={(e) => handleInputChange(e, 'down_time')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Toplam Duruş (dk) <span className="text-[10px] text-indigo-500 font-bold ml-1">(Otomatik)</span></label>
+                                <input type="number" step="0.1" value={editFormData.down_time ?? ''} disabled className="w-full text-sm border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 rounded-md p-2 border cursor-not-allowed" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Planlı Duruş (dk)</label>

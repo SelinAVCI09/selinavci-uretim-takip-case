@@ -13,7 +13,7 @@ Projeyi bilgisayarınızda çalıştırmak için aşağıdaki adımları sıras�
 
 **1. Repoyu Klonlayın ve Klasöre Girin:**
 ```bash
-git clone https://github.com/<kullanici-adiniz>/selinavci-uretim-takip-case.git
+git clone https://github.com/SelinAVCI09/selinavci-uretim-takip-case.git
 cd selinavci-uretim-takip-case
 ```
 
