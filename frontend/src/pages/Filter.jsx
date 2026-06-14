@@ -42,6 +42,8 @@ export default function Filter() {
     if (filters.statusFilter === 'valid') data = data.filter(r => r.is_valid === true);
     if (filters.statusFilter === 'warning') data = data.filter(r => r.record_status === 'warning');
     if (filters.statusFilter === 'error') data = data.filter(r => r.record_status === 'error' || (!r.is_valid && !r.record_status)); // Geriye dönük uyumluluk
+    if (filters.statusFilter === 'fix') data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'düzelt'));
+    if (filters.statusFilter === 'reject') data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'reddet'));
     if (filters.statusFilter !== 'all' && filters.errorType) {
       data = data.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.error_type === filters.errorType));
     }
@@ -66,7 +68,18 @@ export default function Filter() {
   };
 
   const uniqueWorkstations = [...new Set(records.map(r => r.workstation_name).filter(Boolean))];
-  const uniqueErrorTypes = [...new Set(records.filter(r => !r.is_valid).flatMap(r => parseErrors(r.validation_errors).map(err => err?.error_type)).filter(Boolean))];
+  const uniqueErrorTypes = [...new Set(
+    records
+      .filter(r => {
+        if (filters.statusFilter === 'warning') return r.record_status === 'warning';
+        if (filters.statusFilter === 'error') return r.record_status === 'error' || (!r.is_valid && !r.record_status);
+        if (filters.statusFilter === 'fix') return !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'düzelt');
+        if (filters.statusFilter === 'reject') return !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'reddet');
+        return !r.is_valid;
+      })
+      .flatMap(r => parseErrors(r.validation_errors).map(err => err?.error_type))
+      .filter(Boolean)
+  )];
 
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return;
@@ -83,6 +96,13 @@ export default function Filter() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // Tablo Kategorilerinin Adet Hesaplamaları
+  const validCount = records.filter(r => r.is_valid).length;
+  const warningCount = records.filter(r => r.record_status === 'warning').length;
+  const errorCount = records.filter(r => r.record_status === 'error' || (!r.is_valid && !r.record_status)).length;
+  const fixCount = records.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'düzelt')).length;
+  const rejectCount = records.filter(r => !r.is_valid && parseErrors(r.validation_errors).some(e => e?.action === 'reddet')).length;
 
   return (
     <div className="space-y-6">
@@ -114,14 +134,16 @@ export default function Filter() {
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Minimum OEE Değeri: %{filters.minOee}</label><input type="range" min="0" max="100" value={filters.minOee} onChange={e => setFilters({...filters, minOee: Number(e.target.value)})} className="w-full mt-2" /></div>
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-3">
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Kayıt Durumu</label>
-              <select value={filters.statusFilter} onChange={e => setFilters({...filters, statusFilter: e.target.value})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
-                <option value="all">Tüm Kayıtlar</option>
-                <option value="valid">✅ Sadece Geçerli Kayıtlar</option>
-                <option value="warning">⚠️ Sadece Uyarılar</option>
-                <option value="error">❌ Sadece Kesin Hatalı Kayıtlar</option>
+              <select value={filters.statusFilter} onChange={e => setFilters({...filters, statusFilter: e.target.value, errorType: ''})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
+                <option value="all">Tüm Kayıtlar ({records.length})</option>
+                <option value="valid">✅ Geçerli Kayıtlar ({validCount})</option>
+                <option value="warning">⚠️ Uyarılar ({warningCount})</option>
+                <option value="error">❌ Tüm Hatalı Kayıtlar ({errorCount})</option>
+                <option value="fix">✏️ Düzeltilmesi Gerekenler ({fixCount})</option>
+                <option value="reject">🗑️ Reddedilecekler ({rejectCount})</option>
               </select>
               
-              {['warning', 'error'].includes(filters.statusFilter) && uniqueErrorTypes.length > 0 && (
+              {['warning', 'error', 'fix', 'reject'].includes(filters.statusFilter) && uniqueErrorTypes.length > 0 && (
                 <div className="animate-in fade-in slide-in-from-top-2">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Hata Nedeni / Tipi</label>
                   <select value={filters.errorType} onChange={e => setFilters({...filters, errorType: e.target.value})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border bg-white dark:bg-slate-800">
@@ -163,10 +185,16 @@ export default function Filter() {
                         <p className="text-xs font-bold text-slate-800 dark:text-white mb-2 border-b border-slate-100 dark:border-slate-700 pb-1">Hata Detayları:</p>
                         <ul className="text-[11px] space-y-2 text-slate-600 dark:text-slate-400 whitespace-normal">
                           {parseErrors(r.validation_errors).map((err, i) => {
-                            const msg = typeof err === 'object' && err !== null ? (err.message || JSON.stringify(err)) : err;
+                            const isComplex = typeof err === 'object' && err !== null;
+                            const msg = isComplex ? (err.message || JSON.stringify(err)) : err;
+                            const action = isComplex ? err.action : 'uyar';
+                            
                             return (
                               <li key={i} className="flex flex-col">
-                                <span className="font-semibold text-red-500 block">• {String(err?.error_type || 'Bilinmeyen Hata')}</span>
+                                <div className="flex items-center justify-between">
+                                  <span className={`font-semibold ${r.record_status === 'warning' ? 'text-orange-500' : 'text-red-500'} block`}>• {String(err?.error_type || 'Bilinmeyen Hata')}</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${action === 'reddet' ? 'bg-red-100 text-red-700' : action === 'düzelt' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{action}</span>
+                                </div>
                                 <span>{String(msg)}</span>
                                 {err?.reason && <span className="italic opacity-80 mt-0.5 text-slate-500 block">💡 {String(err.reason)}</span>}
                               </li>

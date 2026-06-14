@@ -11,7 +11,7 @@ export default function Import() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
-  const [dbStats, setDbStats] = useState({ total: 0, valid: 0, warning: 0, error: 0 });
+  const [dbStats, setDbStats] = useState({ total: 0, valid: 0, warning: 0, error: 0, fix: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
   const fetchStats = async () => {
@@ -155,7 +155,7 @@ export default function Import() {
             <div>
               <h3 className="font-bold text-blue-800 dark:text-blue-300">Sistemde Yüklü Veri Bulunuyor</h3>
               <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
-                Şu anda veritabanında <strong>{dbStats.total}</strong> kayıt var ({dbStats.valid} geçerli, {dbStats.warning} uyarı, {dbStats.error} kesin hatalı).
+                Şu anda veritabanında <strong>{dbStats.total}</strong> kayıt var ({dbStats.valid} geçerli, {dbStats.warning} uyarı, {dbStats.error} kesin hatalı, {dbStats.fix || 0} düzeltilmesi gereken).
               </p>
             </div>
           </div>
@@ -254,11 +254,12 @@ export default function Import() {
           <h3 className="text-lg font-bold text-green-800 dark:text-green-400 flex items-center mb-6">
             <CheckCircle className="mr-2" /> CSV Rapor Yüklemesi Tamamlandı
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
             <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-green-100 dark:border-green-800/30"><div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Toplam Satır</div><div className="text-xl font-bold text-slate-800 dark:text-slate-200">{result.summary.total_rows}</div></div>
             <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-green-100 dark:border-green-800/30"><div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Geçerli Kayıt</div><div className="text-xl font-bold text-green-600 dark:text-green-400">{result.summary.valid}</div></div>
             <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-orange-100 dark:border-orange-800/30"><div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Uyarı (Şüpheli)</div><div className="text-xl font-bold text-orange-500 dark:text-orange-400">{result.summary.warning}</div></div>
             <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-red-100 dark:border-red-800/30"><div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Kesin Hatalı</div><div className="text-xl font-bold text-red-600 dark:text-red-400">{result.summary.error}</div></div>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-blue-100 dark:border-blue-800/30"><div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Düzeltilmesi Gereken</div><div className="text-xl font-bold text-blue-600 dark:text-blue-400">{result.summary.fix || 0}</div></div>
           </div>
 
           {result.summary.error_breakdown && Object.keys(result.summary.error_breakdown).length > 0 && (

@@ -10,8 +10,6 @@ export default function Validation() {
   const [expandedHistory, setExpandedHistory] = useState({});
   
   // Yeni Eklentiler (Filtreleme & Ayarlar)
-  const [validationSettings, setValidationSettings] = useState({});
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRevalidating, setIsRevalidating] = useState(false);
   const [filters, setFilters] = useState({ search: '', status: '', errorType: '' });
 
@@ -39,7 +37,6 @@ export default function Validation() {
 
   useEffect(() => {
     fetchSuspiciousRecords();
-    fetchSettings();
   }, []);
 
   const fetchSuspiciousRecords = async () => {
@@ -51,26 +48,6 @@ export default function Validation() {
       console.error('Kayıtlar çekilirken hata oluştu', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const response = await axios.get('http://localhost:8000/api/v1/validation-settings');
-      setValidationSettings(response.data || {});
-    } catch (error) {
-      console.error('Ayarlar çekilemedi', error);
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    try {
-      await axios.put('http://localhost:8000/api/v1/validation-settings', validationSettings);
-      setIsSettingsOpen(false);
-      await handleRevalidate(); // Yeni kuralları anında uygula ve tabloyu güncelle
-    } catch (error) {
-      console.error('Ayarlar kaydedilemedi', error);
-      alert('Ayarlar kaydedilemedi.');
     }
   };
 
@@ -87,29 +64,20 @@ export default function Validation() {
     }
   };
 
-  const SETTINGS_INFO = {
-    missing_wo: { label: "Eksik İş Emri", desc: "İş emri no boş bırakılamaz." },
-    format_wo: { label: "İş Emri Formatı", desc: "Standart format (302 ile başlar, 10 hane)." },
-    invalid_shift: { label: "Vardiya Kontrolü", desc: "Vardiya 1, 2 veya 3 olmalıdır." },
-    missing_ws: { label: "Eksik İş İstasyonu", desc: "İş İstasyonu alanı zorunludur." },
-    negative_prod: { label: "Geçersiz Üretim Miktarı", desc: "Üretim en az 1 olmalı, fire negatif olamaz." },
-    scrap_gt_prod: { label: "Fire > Toplam Üretim", desc: "Fire miktarı üretimden büyük olamaz." },
-    out_of_range_pct: { label: "Yüzdelik Aralık", desc: "A, P, Q ve OEE 0-100 arasında olmalıdır." },
-    capacity_exceed: { label: "Kapasite Aşımı (Uyarı)", desc: "Performans %100'ü aşarsa uyar." },
-    downtime_mismatch: { label: "Duruş Tutarsızlığı", desc: "Toplam Duruş = Planlı + Plansız Duruş." },
-    downtime_gt_worktime: { label: "Duruş > Çalışma Süresi", desc: "Duruş, çalışma süresini geçemez." },
-    prod_zero_worktime: { label: "Süresiz Üretim", desc: "Çalışma süresi sıfırken üretim yapılamaz." },
-    avail_100_with_downtime: { label: "Duruş Varken A=%100", desc: "Duruş varsa Kullanılabilirlik (A) %100 olamaz." },
-    invalid_date: { label: "Geçersiz/Gelecek Tarih", desc: "Tarih boş veya bugünden ileri olamaz." },
-    oee_mismatch: { label: "OEE Hesabı Hatası", desc: "A * P * Q ile Raporlanan OEE eşleşmelidir." }
-  };
-
   // Filtreleme İşlemi (Arama, Durum ve Hata Tipi)
   const safeRecords = Array.isArray(records) ? records : [];
   const uniqueErrorTypes = [...new Set(
-    safeRecords.reduce((acc, r) => {
-      return acc.concat(parseErrors(r?.validation_errors).map(err => err?.error_type).filter(Boolean));
-    }, [])
+    safeRecords
+      .filter(r => {
+        if (filters.status === 'error') return r?.record_status === 'error';
+        if (filters.status === 'warning') return r?.record_status === 'warning';
+        if (filters.status === 'fix') return parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt');
+        if (filters.status === 'reject') return parseErrors(r?.validation_errors).some(e => e?.action === 'reddet');
+        return true;
+      })
+      .reduce((acc, r) => {
+        return acc.concat(parseErrors(r?.validation_errors).map(err => err?.error_type).filter(Boolean));
+      }, [])
   )];
   
   const filteredRecords = safeRecords.filter(r => {
@@ -118,7 +86,13 @@ export default function Validation() {
       String(r?.work_order_no || '').toLowerCase().includes(search) || 
       String(r?.stock_name || '').toLowerCase().includes(search) || 
       String(r?.record_id || '').includes(search);
-    const matchStatus = filters.status === '' || r?.record_status === filters.status;
+      
+    let matchStatus = true;
+    if (filters.status === 'error') matchStatus = r?.record_status === 'error';
+    else if (filters.status === 'warning') matchStatus = r?.record_status === 'warning';
+    else if (filters.status === 'fix') matchStatus = parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt');
+    else if (filters.status === 'reject') matchStatus = parseErrors(r?.validation_errors).some(e => e?.action === 'reddet');
+
     const matchErrorType = filters.errorType === '' || parseErrors(r?.validation_errors).some(e => e?.error_type === filters.errorType);
     return matchSearch && matchStatus && matchErrorType;
   });
@@ -142,12 +116,27 @@ export default function Validation() {
     if (e.target.type === 'number') {
       value = value === '' ? null : Number(value);
     }
-    setEditFormData({ ...editFormData, [field]: value });
+    
+    setEditFormData(prev => {
+      const newData = { ...prev, [field]: value };
+      
+      // OEE Otomatik Hesaplama (A, P veya Q değişirse formda anında güncelle)
+      if (['availability', 'performance', 'quality'].includes(field)) {
+        const a = newData.availability;
+        const p = newData.performance;
+        const q = newData.quality;
+        if (a != null && p != null && q != null) {
+          newData.oee = Number(((a / 100) * (p / 100) * (q / 100) * 100).toFixed(2));
+        }
+      }
+      return newData;
+    });
   };
 
   const handleSave = async (recordId) => {
     try {
-      const { record_id, is_valid, validation_errors, audit_trail, ...updateData } = editFormData;
+      // Backend'in ihtiyacı olmayan alanları filtreleyip sadece form verisini iletiyoruz
+      const { record_id, is_valid, validation_errors, audit_trail, record_status, date, ...updateData } = editFormData;
       const response = await axios.put(`http://localhost:8000/api/v1/records/${recordId}`, updateData);
       
       if (response.data.is_valid) {
@@ -156,7 +145,8 @@ export default function Validation() {
         setRecords(safeRecords.map(r => r.record_id === recordId ? { 
           ...editFormData, 
           validation_errors: JSON.stringify(response.data.errors),
-          audit_trail: JSON.stringify(response.data.audit_trail)
+          audit_trail: JSON.stringify(response.data.audit_trail),
+          record_status: response.data.record_status || 'error'
         } : r));
       }
       setEditingRecordId(null);
@@ -177,9 +167,17 @@ export default function Validation() {
     }
   };
 
-  // İstatistik Rapor Verileri
-  const errorCount = safeRecords.filter(r => r?.record_status === 'error').length;
-  const warningCount = safeRecords.filter(r => r?.record_status === 'warning').length;
+  // İstatistik Rapor Verileri (Kartlar için filtrelenmiş veriler üzerinden)
+  const errorCount = filteredRecords.filter(r => r?.record_status === 'error').length;
+  const warningCount = filteredRecords.filter(r => r?.record_status === 'warning').length;
+  const fixCount = filteredRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt')).length;
+
+  // Dropdown (Select) İçin Genel Adetler (Tüm safeRecords üzerinden)
+  const totalCountOverall = safeRecords.length;
+  const errorCountOverall = safeRecords.filter(r => r?.record_status === 'error').length;
+  const warningCountOverall = safeRecords.filter(r => r?.record_status === 'warning').length;
+  const fixCountOverall = safeRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'düzelt')).length;
+  const rejectCountOverall = safeRecords.filter(r => parseErrors(r?.validation_errors).some(e => e?.action === 'reddet')).length;
 
   const getActionColor = (action) => {
     switch(action) {
@@ -227,9 +225,6 @@ export default function Validation() {
           <button onClick={handleExportCSV} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shadow-sm">
             <Download size={16} className="mr-2" /> CSV İndir
           </button>
-          <button onClick={() => setIsSettingsOpen(true)} className="flex items-center px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-medium text-sm shadow-sm">
-            <Settings size={16} className="mr-2" /> Validasyon Ayarları
-          </button>
           <button onClick={handleRevalidate} disabled={isRevalidating} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium text-sm shadow-sm">
             <RefreshCw size={16} className={`mr-2 ${isRevalidating ? 'animate-spin' : ''}`} /> {isRevalidating ? 'Doğrulanıyor...' : 'Tüm Kayıtları Yeniden Doğrula'}
           </button>
@@ -237,18 +232,22 @@ export default function Validation() {
       </div>
 
       {/* Kalite Raporu (Özet Kartları) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center">
           <div className="p-3 bg-slate-100 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 rounded-lg mr-4"><BarChart2 size={24}/></div>
-          <div><p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Toplam Şüpheli Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{safeRecords.length}</h3></div>
+          <div><p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Toplam Sorunlu Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{filteredRecords.length}</h3></div>
         </div>
         <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-red-200 dark:border-red-900/30 shadow-sm flex items-center">
           <div className="p-3 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-lg mr-4"><AlertTriangle size={24}/></div>
-          <div><p className="text-xs font-bold text-red-500 dark:text-red-400 uppercase">Kesin Hatalı (Müdahale Şart)</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{errorCount}</h3></div>
+          <div><p className="text-xs font-bold text-red-500 dark:text-red-400 uppercase">Kesin Hatalı Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{errorCount}</h3></div>
         </div>
         <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-orange-200 dark:border-orange-900/30 shadow-sm flex items-center">
           <div className="p-3 bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 rounded-lg mr-4"><AlertTriangle size={24}/></div>
-          <div><p className="text-xs font-bold text-orange-500 dark:text-orange-400 uppercase">Sadece Uyarı Niteliğinde</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{warningCount}</h3></div>
+          <div><p className="text-xs font-bold text-orange-500 dark:text-orange-400 uppercase">Sadece Uyarı Barındıran Kayıt</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{warningCount}</h3></div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-blue-200 dark:border-blue-900/30 shadow-sm flex items-center">
+          <div className="p-3 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg mr-4"><Edit2 size={24}/></div>
+          <div><p className="text-xs font-bold text-blue-500 dark:text-blue-400 uppercase">Düzeltilmesi Gereken</p><h3 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{fixCount}</h3></div>
         </div>
       </div>
 
@@ -262,10 +261,12 @@ export default function Validation() {
             <input type="text" placeholder="İş Emri, Stok Adı veya Kayıt ID Ara..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50" />
           </div>
           <div className="flex gap-2">
-            <select value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none">
-              <option value="">Tüm Durumlar</option>
-              <option value="error">❌ Kesin Hatalı</option>
-              <option value="warning">⚠️ Sadece Uyarı</option>
+            <select value={filters.status} onChange={e => setFilters({...filters, status: e.target.value, errorType: ''})} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none">
+              <option value="">Tüm Durumlar ({totalCountOverall})</option>
+              <option value="error">❌ Kesin Hatalı ({errorCountOverall})</option>
+              <option value="warning">⚠️ Sadece Uyarı ({warningCountOverall})</option>
+              <option value="fix">✏️ Düzeltilmesi Gerekenler ({fixCountOverall})</option>
+              <option value="reject">🗑️ Reddedilecekler ({rejectCountOverall})</option>
             </select>
             <select value={filters.errorType} onChange={e => setFilters({...filters, errorType: e.target.value})} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:text-white outline-none max-w-[200px]">
               <option value="">Tüm Hata Tipleri</option>
@@ -399,6 +400,14 @@ export default function Validation() {
                                 <input type="text" value={editFormData.work_order_no || ''} onChange={(e) => handleInputChange(e, 'work_order_no')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
                               </div>
                               <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">İş İstasyonu</label>
+                                <input type="text" value={editFormData.workstation_name || ''} onChange={(e) => handleInputChange(e, 'workstation_name')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Stok Adı (Ürün)</label>
+                                <input type="text" value={editFormData.stock_name || ''} onChange={(e) => handleInputChange(e, 'stock_name')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                              </div>
+                              <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Vardiya</label>
                                 <input type="number" value={editFormData.shift ?? ''} onChange={(e) => handleInputChange(e, 'shift')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
                               </div>
@@ -413,6 +422,22 @@ export default function Validation() {
                               <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">OEE (%)</label>
                                 <input type="number" step="0.1" value={editFormData.oee ?? ''} onChange={(e) => handleInputChange(e, 'oee')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kullanılabilirlik (A) %</label>
+                                <input type="number" step="0.1" value={editFormData.availability ?? ''} onChange={(e) => handleInputChange(e, 'availability')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Performans (P) %</label>
+                                <input type="number" step="0.1" value={editFormData.performance ?? ''} onChange={(e) => handleInputChange(e, 'performance')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kalite (Q) %</label>
+                                <input type="number" step="0.1" value={editFormData.quality ?? ''} onChange={(e) => handleInputChange(e, 'quality')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Çalışma Süresi (dk)</label>
+                                <input type="number" step="0.1" value={editFormData.work_time ?? ''} onChange={(e) => handleInputChange(e, 'work_time')} className="w-full text-sm border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md p-2 border" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Toplam Duruş (dk)</label>
@@ -446,43 +471,6 @@ export default function Validation() {
           </div>
         )}
       </div>
-      
-      {/* Validasyon Ayarları Modal */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center"><Settings className="mr-2" size={20} /> Validasyon Kuralları & Filtre Ayarları</h2>
-              <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={24} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/20">
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                Sistemin verileri denetlerken kullanacağı kalite kurallarını buradan açıp kapatabilirsiniz. Kapattığınız kurallar sebebiyle daha önce hata fırlatan kayıtları temize çekmek için işlemi kaydettikten sonra <strong>"Yeniden Doğrula"</strong> butonuna tıklamayı unutmayın.
-              </p>
-              <div className="space-y-3">
-                {Object.keys(validationSettings || {}).map(key => (
-                  <div key={key} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
-                    <div className="pr-4">
-                      <h4 className="font-bold text-sm text-slate-800 dark:text-white">{SETTINGS_INFO[key]?.label || key}</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{SETTINGS_INFO[key]?.desc}</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input type="checkbox" className="sr-only peer" checked={!!(validationSettings || {})[key]} onChange={(e) => setValidationSettings({ ...(validationSettings || {}), [key]: e.target.checked })} />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-end gap-3">
-              <button onClick={() => setIsSettingsOpen(false)} className="px-4 py-2 font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors text-sm">İptal</button>
-              <button onClick={handleSaveSettings} className="px-4 py-2 font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-sm flex items-center">
-                <Save size={16} className="mr-2" /> Ayarları Kaydet
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
