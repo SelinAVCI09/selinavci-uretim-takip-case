@@ -142,7 +142,13 @@ export default function Filter() {
               <div className="flex space-x-4">{[1, 2, 3].map(s => (<label key={s} className="flex items-center text-sm cursor-pointer dark:text-slate-300"><input type="checkbox" checked={filters.shifts.includes(s)} onChange={() => toggleArrayFilter('shifts', s)} className="mr-2"/> Vardiya {s}</label>))}</div>
             </div>
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">İş İstasyonu</label>
-              <select multiple value={filters.workstations} onChange={e => setFilters({...filters, workstations: Array.from(e.target.selectedOptions, o => o.value)})} className="w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-md text-sm p-2 border h-20 bg-slate-50 dark:bg-slate-800">{uniqueWorkstations.map(w => <option key={w} value={w}>{w}</option>)}</select>
+              <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-3 border border-slate-300 dark:border-slate-600 rounded-md bg-slate-50 dark:bg-slate-800">
+                {uniqueWorkstations.map(w => (
+                  <label key={w} className="flex items-center text-sm cursor-pointer dark:text-slate-300">
+                    <input type="checkbox" checked={filters.workstations.includes(w)} onChange={() => toggleArrayFilter('workstations', w)} className="mr-2 flex-shrink-0" /> <span className="truncate">{w}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
           <div className="space-y-4">
