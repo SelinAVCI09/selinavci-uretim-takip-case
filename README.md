@@ -156,14 +156,26 @@ Case study'de belirtilen *"Verideki kayıtların hepsini import etmem mi gerekiy
 
 ---
 
-## � API Entegrasyon Akışı (Hedef Sisteme Gönderim)
-Validasyonu başarıyla geçen veriler API üzerinden aşağıdaki mimariyle gönderilir:
+## 🔄 API Entegrasyon Akışı (Hedef Sisteme Gönderim)
+Validasyonu başarıyla geçen veriler dış dünyaya (Magna REST API) sıradan bir şekilde değil; hatalara karşı dirençli (resilient), güvenli ve çift gönderimi engelleyen tamamen **Production-Ready** bir stratejiyle gönderilir:
 
-1. **Grouping (Gruplama):** Temizlenen veriler "Tarih ve Vardiya" kırılımında gruplanıp OEE ve Toplam Üretim ortalamaları hesaplanarak tek JSON objesi haline getirilir.
-2. **Idempotency (Çift Kayıt Koruması):** Veri dış API'ye gönderilmeden önce `SyncLog` (Geçmiş) tablosu kontrol edilir. Aynı verilerin (Aynı Vardiya + Aynı OEE/Üretim rakamı) ikinci kez hedefe yollanması engellenir.
-3. **Batch & Fallback (Toplu ve Tekil Gönderim):** Hedef sisteme 20'li listeler (Batch) halinde istek atılır. Hedef sistem listeyi kabul etmeyip `422 Unprocessable Entity` dönerse, sistem **Fallback** moduna geçip listeyi parçalayarak tek tek (Single) gönderir.
-4. **Exponential Backoff & Pacing:** Ağ hatalarında (`5xx`) veya Rate Limit aşımında (`429`), sistem hedef sunucuyu yormamak için katlanarak artan (2s, 4s, 8s veya 60s) bekleme süreleri uygulayarak (Circuit Breaker) isteği tekrar eder.
-5. **Background Tasks (Asenkron Gönderim):** Aktarım işlemi FastAPI arkaplan görevleriyle yürütülür, kullanıcı arayüzü (UI) kilitlenmez. İşlem sonuçları `sync_logs` tablosuna (HTTP Status, Request/Response payload) kalıcı olarak yazılır.
+### 1. Auth (Yetkilendirme ve Güvenlik) Stratejisi
+* **Dinamik API Key Yönetimi:** Hedef sistemin belirlediği kurallara uyarak `X-Production-Key` header'ı üzerinden yetkilendirme sağlanır. Bu gizli anahtar koda (hardcoded) gömülmemiş, `.env` dosyası üzerinden okunmuştur. 
+* **UI Entegrasyonu:** Arayüzdeki "API Ayarları" paneli (Backend'deki `/api/v1/sync/settings` endpoint'i) sayesinde yöneticiler, sunucuyu yeniden başlatmaya veya kodu değiştirmeye gerek kalmadan API Key ve Hedef URL bilgisini anında güncelleyebilirler.
+
+### 2. Retry, Backoff ve Fallback (Hata Yönetimi) Stratejisi
+Ağın her zaman kusursuz olmayacağı ve karşı sunucunun yorulabileceği öngörülerek 3 farklı savunma hattı kurulmuştur:
+* **Exponential Backoff (Katlanarak Bekleme):** Ağ kesintileri veya karşı sunucunun anlık çökmesi (`5xx` hataları) durumunda arka arkaya istek atıp hedefi kilitlemek yerine, başarısız istekler 2sn, 4sn, 8sn şeklinde katlanarak artan sürelerle tekrar denenir.
+* **Circuit Breaker (429 Rate Limit Koruması):** Hedef sunucu çok hızlı veri gönderildiği için bizi engellerse (HTTP `429 Too Many Requests`), sistem paniğe kapılıp çökmez. Kodumuz kendini tam **60 saniye dondurarak (uyutarak)** karşı sunucuya nefes alma payı verir ve süre bitince kuyruktaki verileri göndermeye kaldığı yerden devam eder.
+* **Batch to Single Fallback (422 Validasyon Koruması):** Veriler ağı yormamak için 20'li paketler (Batch) halinde yollanır. Eğer hedef sistem bu paketteki tek bir kaydı bile beğenmeyip `422 Unprocessable Entity` dönerse, efsanevi bir **Fallback (Geri Çekilme)** mekanizması devreye girer. Sistem paketi parçalar ve içindeki verileri tek tek yollamaya başlar. Böylece 19 temiz veri kurtarılıp karşıya geçerken, sadece 1 sorunlu veri "Hata/Yeniden Denenecek" olarak işaretlenir.
+
+### 3. Idempotency (Çift Kayıt Koruması) Stratejisi
+Aynı vardiya verisinin hedef API'ye 2 veya 3 defa gidip üretim rakamlarını şişirmemesi için askeri düzeyde bir koruma kurgulanmıştır:
+* **SyncLog (Geçmiş) Denetimi:** Arka planda çalışan `get_sync_preview` fonksiyonu yeni verileri kuyruğa almadan önce veritabanındaki `sync_logs` tablosuna bakar.
+* **Sıfır Mükerrer Kayıt:** Eğer o "Tarih ve Vardiya" için daha önce `200 OK` dönmüş başarılı bir gönderim yapılmışsa ve paketin içeriğindeki değerler (`oe_value`, `total_production_units`, `machine_count`) **aynıysa**, sistem bu paketi "Zaten Gönderildi" olarak işaretler ve ikinci kez **ASLA** göndermez.
+* **Akıllı Esneklik:** Eğer başarılı bir gönderimden sonra mühendis arayüzden OEE veya Üretim rakamlarında bir "Düzeltme" yaparsa; sistem geçmiş loglara bakar ve *"Rakamlar değişmiş, eski başarılı paketten farklı bir durum var"* diyerek güncel paketi otomatik olarak tekrar gönderim kuyruğuna alır.
+
+*(Not: Bu aktarım işlemleri FastAPI `BackgroundTasks` ile asenkron yürütüldüğü için kullanıcı arayüzü asla kilitlenmez.)*
 
 ---
 
@@ -228,4 +240,3 @@ Case dokümanındaki taleplere ek olarak aşağıdaki "Senior" seviye mühendisl
 ## 🔮 Daha Fazla Zaman Olsaydı Neler Geliştirilirdi?
 1. **Kestirimci Bakım (Predictive AI):** Geçmiş duruş süreleri ve OEE trendlerini bir Machine Learning (Makine Öğrenmesi) algoritmasına vererek, "IMM-2700 nolu makine önümüzdeki 3 gün içinde planlı bakıma alınmalı" tahmini üreten bir servis eklenebilirdi.
 2. **PostgreSQL/Redis Geçişi:** Çok daha büyük ölçekli ve çoklu fabrika desteği için veritabanı SQLite yerine PostgreSQL'e, arkaplan görevleri ise Celery/Redis ikilisine geçirilirdi.
-3. **Dockerize Etmek:** Projenin tek bir komutla (`docker-compose up`) izole bir container içinde tüm modülleriyle ayağa kalkması sağlanırdı.
