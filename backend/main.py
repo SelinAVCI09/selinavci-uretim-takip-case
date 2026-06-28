@@ -26,7 +26,15 @@ app = FastAPI(
 )
 
 @app.on_event("startup")
-def clear_old_csv_records():
+def startup_event():
+    # Kritik ortam değişkenlerinin varlığını kontrol et
+    if not state.API_KEY or not state.EXTERNAL_API_URL:
+        raise RuntimeError(
+            "KRİTİK HATA: .env dosyanızda API_KEY ve EXTERNAL_API_URL değerleri eksik veya yanlış. "
+            "Lütfen .env.example dosyasını kopyalayıp bu değerleri doldurun."
+        )
+
+    # Eski kayıtları temizle
     state.LAST_IMPORT_TIME = datetime.utcnow()
     db = SessionLocal()
     try:

@@ -35,10 +35,10 @@ def validate_row(row):
         errors.append({"field": "shift", "error_type": "Vardiya Kontrolü", "message": f"Geçersiz Vardiya: {shift}", "reason": "Vardiya 1, 2 veya 3 olmalıdır.", "action": get_action("invalid_shift", "düzelt")})
 
     if is_active("missing_ws") and (pd.isna(row.get("workstation_name")) or not str(row.get("workstation_name")).strip()):
-        errors.append({"field": "workstation_name", "error_type": "İş İstasyonu ve Ürün", "message": "İş İstasyonu bilgisi eksik.", "reason": "Performans ölçümü istasyon bazlı yapıldığı için bu alan zorunludur.", "action": get_action("missing_ws", "reddet")})
+        errors.append({"field": "workstation_name", "error_type": "Eksik İş İstasyonu", "message": "İş İstasyonu bilgisi eksik.", "reason": "Performans ölçümü istasyon bazlı yapıldığı için bu alan zorunludur.", "action": get_action("missing_ws", "reddet")})
 
     if is_active("missing_product") and (pd.isna(row.get("stock_name")) or not str(row.get("stock_name")).strip()):
-        errors.append({"field": "stock_name", "error_type": "İş İstasyonu ve Ürün", "message": "Stok Adı (Ürün) bilgisi eksik.", "reason": "Tüm alanların eksiksiz doldurulması zorunludur.", "action": get_action("missing_product", "reddet")})
+        errors.append({"field": "stock_name", "error_type": "Eksik Ürün (Stok)", "message": "Stok Adı (Ürün) bilgisi eksik.", "reason": "Tüm alanların eksiksiz doldurulması zorunludur.", "action": get_action("missing_product", "reddet")})
 
     if is_active("missing_metrics"):
         metrics_to_check = [("availability", "Kullanılabilirlik (A)"), ("performance", "Performans (P)"), ("quality", "Kalite (Q)"), ("oee", "OEE"), ("work_time", "Çalışma Süresi"), ("down_time", "Toplam Duruş"), ("total_produced", "Toplam Üretim"), ("scrap_qty", "Fire")]
