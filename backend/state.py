@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(dotenv_path=env_path)
-
+API_KEY = os.getenv("API_KEY", "cand-selin-avci-80ch1b7u")
+EXTERNAL_API_URL = os.getenv("EXTERNAL_API_URL", "http://89.252.189.91:8983/api/v1/submit")
 
 LAST_IMPORT_TIME = datetime.utcnow()
 
